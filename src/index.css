@@ -1,0 +1,27 @@
+@import url('https://fonts.googleapis.com/css2?family=Roboto+Slab:wght@400;600;700&family=Nunito:wght@400;500;600;700&display=swap');
+@import 'tailwindcss';
+
+@theme inline {
+  --font-serif: 'Roboto Slab', serif;
+  --font-sans: 'Nunito', sans-serif;
+  
+  --color-background: #FAF9F6;
+  --color-foreground: #1A1A1A;
+  --color-primary: #1A1A1A;
+  --color-primary-foreground: #FAF9F6;
+  --color-accent: #E53935;
+  --color-accent-foreground: #FFFFFF;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  font-family: var(--font-sans);
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-serif);
+}

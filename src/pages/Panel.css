@@ -1,0 +1,370 @@
+/* ==========================================================================
+   Panel pages — authenticated area
+   Mismo lenguaje visual que Auth.css: tinta oscura + acento rojo
+   ========================================================================== */
+
+.panel {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(1200px 500px at 50% -5%, rgba(229, 57, 53, 0.05), transparent 55%),
+    #f4f4f5;
+  font-family: var(--font-sans);
+}
+
+/* Navbar ------------------------------------------------------------------- */
+.panel__nav {
+  background: #ffffff;
+  border-bottom: 1px solid #e4e4e7;
+  padding: 0 1.5rem;
+  height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  box-shadow: 0 1px 3px rgba(24, 24, 27, 0.05);
+}
+
+.panel__brand {
+  font-family: var(--font-serif);
+  font-weight: 700;
+  font-size: 1.4rem;
+  letter-spacing: -0.02em;
+  color: var(--color-foreground);
+  text-decoration: none;
+}
+
+.panel__brand span {
+  color: var(--color-accent);
+}
+
+.panel__nav-links {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.panel__nav-link {
+  padding: 0.4rem 0.75rem;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #52525b;
+  text-decoration: none;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.panel__nav-link:hover {
+  background: #f4f4f5;
+  color: var(--color-foreground);
+}
+
+.panel__nav-link--active {
+  background: #f4f4f5;
+  color: var(--color-foreground);
+  font-weight: 700;
+}
+
+.panel__logout {
+  margin-left: 0.5rem;
+  padding: 0.4rem 0.9rem;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--color-accent);
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.panel__logout:hover {
+  background: #fef2f2;
+}
+
+/* Main content ------------------------------------------------------------- */
+.panel__main {
+  flex: 1;
+  padding: 2rem 1.5rem 3rem;
+  max-width: 860px;
+  width: 100%;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+/* Headings ----------------------------------------------------------------- */
+.panel__heading {
+  font-family: var(--font-serif);
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--color-foreground);
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+
+.panel__subheading {
+  font-size: 0.875rem;
+  color: #71717a;
+  margin: 0.2rem 0 0;
+}
+
+/* Card --------------------------------------------------------------------- */
+.panel__card {
+  background: #ffffff;
+  border: 1px solid #e4e4e7;
+  border-radius: 14px;
+  padding: 1.5rem;
+  box-shadow:
+    0 1px 2px rgba(24, 24, 27, 0.04),
+    0 6px 20px -10px rgba(24, 24, 27, 0.1);
+}
+
+.panel__card-title {
+  font-family: var(--font-serif);
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: var(--color-foreground);
+  margin: 0 0 1rem;
+}
+
+/* Stat tile ---------------------------------------------------------------- */
+.panel__stat-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #a1a1aa;
+}
+
+.panel__stat-value {
+  font-family: var(--font-serif);
+  font-size: 2.25rem;
+  font-weight: 700;
+  color: var(--color-foreground);
+  letter-spacing: -0.03em;
+  margin-top: 0.15rem;
+}
+
+/* Progress bar ------------------------------------------------------------- */
+.progress {
+  width: 100%;
+  height: 5px;
+  background: #e4e4e7;
+  border-radius: 99px;
+  overflow: hidden;
+  margin-top: 0.6rem;
+}
+
+.progress__fill {
+  height: 100%;
+  border-radius: 99px;
+  background: var(--color-accent);
+  transition: width 0.5s ease;
+}
+
+/* List rows ---------------------------------------------------------------- */
+.panel__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.panel__list-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.85rem 1rem;
+  background: #fafafa;
+  border: 1px solid #f0f0f0;
+  border-radius: 10px;
+  gap: 0.75rem;
+}
+
+.panel__list-label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-foreground);
+  margin: 0;
+}
+
+.panel__list-sub {
+  font-size: 0.725rem;
+  color: #a1a1aa;
+  margin: 0.1rem 0 0;
+}
+
+.panel__list-amount {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--color-foreground);
+  white-space: nowrap;
+}
+
+.panel__list-amount--credit {
+  color: #16a34a;
+}
+
+.panel__list-amount--debit {
+  color: var(--color-accent);
+}
+
+/* Badge -------------------------------------------------------------------- */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.55rem;
+  border-radius: 99px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.badge--green {
+  background: #f0fdf4;
+  color: #15803d;
+}
+
+.badge--red {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+/* Alerts ------------------------------------------------------------------- */
+.panel__alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border: 1px solid;
+  border-radius: 10px;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.panel__alert svg {
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+}
+
+.panel__alert--success {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+  color: #15803d;
+}
+
+.panel__alert--error {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #dc2626;
+}
+
+/* Button ------------------------------------------------------------------- */
+.panel__submit {
+  padding: 0.65rem 1.4rem;
+  background: var(--color-primary);
+  color: var(--color-primary-foreground);
+  font-weight: 700;
+  font-size: 0.875rem;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.05s ease;
+}
+
+.panel__submit:hover:not(:disabled) {
+  background: #27272a;
+}
+
+.panel__submit:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.panel__submit:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+
+/* Amount input ------------------------------------------------------------- */
+.amount-input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: #fafafa;
+  border: 1px solid #e4e4e7;
+  border-radius: 10px;
+  font-size: 1rem;
+  font-family: var(--font-sans);
+  color: var(--color-foreground);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.amount-input:focus {
+  outline: none;
+  background: #fff;
+  border-color: #a1a1aa;
+  box-shadow: 0 0 0 3px rgba(24, 24, 27, 0.06);
+}
+
+.amount-input::placeholder {
+  color: #a1a1aa;
+}
+
+/* Role demo toggle --------------------------------------------------------- */
+.role-toggle {
+  display: flex;
+  gap: 0.3rem;
+  padding: 0.25rem;
+  background: #ebebeb;
+  border-radius: 10px;
+  width: fit-content;
+}
+
+.role-toggle__btn {
+  padding: 0.3rem 0.85rem;
+  border-radius: 7px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+  background: transparent;
+  color: #71717a;
+}
+
+.role-toggle__btn--active {
+  background: #ffffff;
+  color: var(--color-foreground);
+  box-shadow: 0 1px 3px rgba(24, 24, 27, 0.12);
+}
+
+/* Section divider ---------------------------------------------------------- */
+.panel__section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+/* Responsive --------------------------------------------------------------- */
+@media (max-width: 600px) {
+  .panel__nav {
+    padding: 0 1rem;
+  }
+
+  .panel__nav-link {
+    padding: 0.4rem 0.5rem;
+    font-size: 0.8rem;
+  }
+
+  .panel__main {
+    padding: 1.25rem 1rem 2.5rem;
+  }
+
+  .panel__stat-value {
+    font-size: 1.75rem;
+  }
+}

@@ -1,0 +1,312 @@
+/* ==========================================================================
+   Auth page — Instagram-inspired login / registro
+   Marca Catalyst: tinta oscura + acento rojo sobre lienzo gris claro
+   ========================================================================== */
+
+.auth {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2.5rem;
+  padding: 3rem 1rem;
+  background:
+    radial-gradient(1200px 600px at 50% -10%, rgba(229, 57, 53, 0.06), transparent 60%),
+    #f4f4f5;
+  font-family: var(--font-sans);
+}
+
+/* Columna central estrecha, estilo Instagram ------------------------------- */
+.auth__stack {
+  width: 100%;
+  max-width: 350px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* Tarjetas ----------------------------------------------------------------- */
+.auth__card {
+  background: #ffffff;
+  border: 1px solid #e4e4e7;
+  border-radius: 14px;
+  box-shadow:
+    0 1px 2px rgba(24, 24, 27, 0.04),
+    0 12px 32px -12px rgba(24, 24, 27, 0.12);
+}
+
+.auth__card--main {
+  padding: 2.5rem 2.5rem 2rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.auth__card--switch {
+  padding: 1.25rem;
+  text-align: center;
+  font-size: 0.875rem;
+  color: #18181b;
+}
+
+/* Marca -------------------------------------------------------------------- */
+.auth__brand {
+  font-family: var(--font-serif);
+  font-weight: 700;
+  font-size: 2.5rem;
+  letter-spacing: -0.03em;
+  color: var(--color-foreground);
+  margin: 0.5rem 0 1.75rem;
+  text-decoration: none;
+}
+
+.auth__brand span {
+  color: var(--color-accent);
+}
+
+.auth__tagline {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  font-size: 1.05rem;
+  line-height: 1.35;
+  text-align: center;
+  color: #52525b;
+  margin: 0 0 1.5rem;
+}
+
+/* Banner de estado --------------------------------------------------------- */
+.auth__alert {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  margin-bottom: 1rem;
+  border: 1px solid;
+  border-radius: 10px;
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.auth__alert svg {
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+}
+
+.auth__alert--success {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+  color: #15803d;
+}
+
+.auth__alert--error {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #dc2626;
+}
+
+/* Formulario --------------------------------------------------------------- */
+.auth__form {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* Campo con etiqueta flotante ---------------------------------------------- */
+.field {
+  position: relative;
+}
+
+.field__input {
+  width: 100%;
+  height: 44px;
+  padding: 1rem 0.75rem 0.35rem;
+  background: #fafafa;
+  border: 1px solid #e4e4e7;
+  border-radius: 10px;
+  font-size: 0.85rem;
+  color: #18181b;
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.field__input:hover {
+  border-color: #d4d4d8;
+}
+
+.field__input:focus {
+  outline: none;
+  background: #ffffff;
+  border-color: #a1a1aa;
+  box-shadow: 0 0 0 3px rgba(24, 24, 27, 0.06);
+}
+
+.field__label {
+  position: absolute;
+  left: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.85rem;
+  color: #71717a;
+  pointer-events: none;
+  transition: all 0.15s ease;
+}
+
+.field__input:focus + .field__label,
+.field__input:not(:placeholder-shown) + .field__label {
+  top: 0.55rem;
+  transform: translateY(0);
+  font-size: 0.625rem;
+  letter-spacing: 0.02em;
+  color: #a1a1aa;
+}
+
+.field__trailing {
+  position: absolute;
+  right: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.field__reveal {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-foreground);
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.field__reveal:hover {
+  color: #52525b;
+}
+
+/* Botón principal ---------------------------------------------------------- */
+.auth__submit {
+  width: 100%;
+  margin-top: 0.5rem;
+  padding: 0.7rem;
+  background: var(--color-primary);
+  color: var(--color-primary-foreground);
+  font-weight: 600;
+  font-size: 0.9rem;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.05s ease;
+}
+
+.auth__submit:hover:not(:disabled) {
+  background: #27272a;
+}
+
+.auth__submit:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.auth__submit:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Divisor "OR" ------------------------------------------------------------- */
+.auth__divider {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin: 1.25rem 0;
+}
+
+.auth__divider::before,
+.auth__divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: #e4e4e7;
+}
+
+.auth__divider span {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #a1a1aa;
+}
+
+/* Enlaces y ayudas --------------------------------------------------------- */
+.auth__link {
+  font-size: 0.75rem;
+  color: var(--color-primary);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.auth__link:hover {
+  color: #52525b;
+}
+
+.auth__fineprint {
+  font-size: 0.6875rem;
+  line-height: 1.6;
+  text-align: center;
+  color: #a1a1aa;
+  margin: 0.5rem 0 0;
+}
+
+.auth__switch-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  font-weight: 700;
+  color: var(--color-accent);
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.auth__switch-btn:hover {
+  color: #b71c1c;
+}
+
+/* Pie ---------------------------------------------------------------------- */
+.auth__footer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.75rem;
+  color: #a1a1aa;
+}
+
+.auth__footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 1rem;
+}
+
+.auth__footer-links a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.auth__footer-links a:hover {
+  text-decoration: underline;
+}
+
+.auth__footer p {
+  margin: 0;
+}
+
+/* Responsive --------------------------------------------------------------- */
+@media (max-width: 420px) {
+  .auth__card--main {
+    padding: 2rem 1.5rem 1.5rem;
+  }
+
+  .auth__brand {
+    font-size: 2.15rem;
+  }
+}

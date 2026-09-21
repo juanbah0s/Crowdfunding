@@ -1,0 +1,10 @@
+{
+  "description": "This crowdfunding platform features a user-friendly landing page and a secure login system for account creation, ensuring a seamless experience for users.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
