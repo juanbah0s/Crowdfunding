@@ -1,7 +1,6 @@
-import { useState } from "react";
-import { CheckCircle2, AlertCircle } from "lucide-react";
-import { useUser } from "../context/UserContext";
-import "./Auth.css";
+import { useState } from 'react';
+import { CheckCircle2, AlertCircle } from 'lucide-react';
+import { useUser } from '../context/UserContext';
 
 type FloatingFieldProps = {
   id: string;
@@ -11,18 +10,18 @@ type FloatingFieldProps = {
   onChange: (v: string) => void;
 };
 
-function FloatingField({ id, label, type = "text", value, onChange }: FloatingFieldProps) {
+function FloatingField({ id, label, type = 'text', value, onChange }: FloatingFieldProps) {
   return (
-    <div className="field">
+    <div className='field'>
       <input
         id={id}
         type={type}
-        placeholder=" "
+        placeholder=' '
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="field__input"
+        className='field__input'
       />
-      <label htmlFor={id} className="field__label">
+      <label htmlFor={id} className='field__label'>
         {label}
       </label>
     </div>
@@ -30,68 +29,81 @@ function FloatingField({ id, label, type = "text", value, onChange }: FloatingFi
 }
 
 export function Profile() {
-  const { user, updateProfile } = useUser();
-  const [name, setName] = useState(user?.name ?? "");
-  const [email, setEmail] = useState(user?.email ?? "");
-  const [status, setStatus] = useState<{ type: "success" | "error" | null; message: string }>({
+  const { user, updateProfile, loading } = useUser();
+  const [name, setName] = useState(user?.name ?? '');
+  const [email, setEmail] = useState(user?.email ?? '');
+  const [status, setStatus] = useState<{ type: 'success' | 'error' | null; message: string }>({
     type: null,
-    message: "",
+    message: '',
   });
+  const [submitting, setSubmitting] = useState(false);
 
-  const canSave = name.trim() !== "" && email.trim() !== "";
+  const canSave = name.trim() !== '' && email.trim() !== '';
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitting(true);
+    setStatus({ type: null, message: '' });
+
     if (!name.trim() || !email.trim()) {
-      setStatus({ type: "error", message: "Por favor completa todos los campos obligatorios antes de continuar." });
+      setStatus({ type: 'error', message: 'Por favor completa todos los campos obligatorios antes de continuar.' });
+      setSubmitting(false);
       return;
     }
-    updateProfile(name.trim(), email.trim());
-    setStatus({ type: "success", message: "Perfil actualizado correctamente. Los cambios ya se reflejan en tu cuenta." });
+
+    try {
+      await updateProfile(name.trim(), email.trim());
+      setStatus({ type: 'success', message: 'Perfil actualizado correctamente. Los cambios ya se reflejan en tu cuenta.' });
+    } catch (err: any) {
+      const msg = err.response?.data?.message || err.message || 'Error al actualizar perfil';
+      setStatus({ type: 'error', message: msg });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
-    <main className="panel__main">
+    <main className='panel__main'>
       <div>
-        <h1 className="panel__heading">Editar perfil</h1>
-        <p className="panel__subheading">Actualiza tu nombre y correo electrónico.</p>
+        <h1 className='panel__heading'>Editar perfil</h1>
+        <p className='panel__subheading'>Actualiza tu nombre y correo electrónico.</p>
       </div>
 
-      <div className="panel__card" style={{ maxWidth: 480 }}>
+      <div className='panel__card' style={{ maxWidth: 480 }}>
         {status.type && (
-          <div className={`panel__alert panel__alert--${status.type}`} style={{ marginBottom: "1.25rem" }}>
-            {status.type === "success" ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+          <div className={`panel__alert panel__alert--${status.type}`} style={{ marginBottom: '1.25rem' }}>
+            {status.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
             <p style={{ margin: 0 }}>{status.message}</p>
           </div>
         )}
 
         <form
           onSubmit={handleSave}
-          style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}
+          style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}
         >
           <FloatingField
-            id="profile-name"
-            label="Nombre completo"
+            id='profile-name'
+            label='Nombre completo'
             value={name}
-            onChange={(v) => { setName(v); setStatus({ type: null, message: "" }); }}
+            onChange={(v) => { setName(v); setStatus({ type: null, message: '' }); }}
           />
           <FloatingField
-            id="profile-email"
-            label="Correo electrónico"
-            type="email"
+            id='profile-email'
+            label='Correo electrónico'
+            type='email'
             value={email}
-            onChange={(v) => { setEmail(v); setStatus({ type: null, message: "" }); }}
+            onChange={(v) => { setEmail(v); setStatus({ type: null, message: '' }); }}
           />
 
-          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "0.5rem" }}>
-            <button type="submit" disabled={!canSave} className="panel__submit">
-              Guardar cambios
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
+            <button type='submit' disabled={!canSave || submitting} className='panel__submit'>
+              {submitting ? 'Guardando...' : 'Guardar cambios'}
             </button>
           </div>
         </form>
       </div>
 
-      <p style={{ fontSize: "0.75rem", color: "#a1a1aa", maxWidth: 480 }}>
+      <p style={{ fontSize: '0.75rem', color: '#a1a1aa', maxWidth: 480 }}>
         Los campos marcados son obligatorios. El correo electrónico se usará para notificaciones y acceso a tu cuenta.
       </p>
     </main>
