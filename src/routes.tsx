@@ -1,6 +1,6 @@
 import { createBrowserRouter, Navigate } from "react-router";
 import { Auth } from "./pages/Auth";
-import { PanelLayout, RequireAuth } from "./pages/PanelLayout";
+import { PanelLayout, RequireAdmin, RequireAuth } from "./pages/PanelLayout";
 import { Dashboard } from "./pages/Dashboard";
 import { Profile } from "./pages/Profile";
 import { Wallet } from "./pages/Wallet";
@@ -9,6 +9,7 @@ import { CampaignDetail } from "./pages/CampaignDetail";
 import { CreateCampaign, EditCampaign } from "./pages/CampaignForm";
 import { MyCampaigns } from "./pages/MyCampaigns";
 import { Notifications } from "./pages/Notifications";
+import { Users } from "./pages/Users";
 
 export const router = createBrowserRouter([
   {
@@ -35,6 +36,11 @@ export const router = createBrowserRouter([
           { path: "/campanas/nueva", Component: CreateCampaign },
           { path: "/campanas/:id/editar", Component: EditCampaign },
           { path: "/notificaciones", Component: Notifications },
+          // Admin-only pages
+          {
+            Component: RequireAdmin,
+            children: [{ path: "/usuarios", Component: Users }],
+          },
         ],
       },
     ],

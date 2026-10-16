@@ -18,9 +18,10 @@ Este repositorio ya incluye:
 - Exploración, búsqueda, filtro por categoría y ordenamiento de campañas (HU-09).
 - Aportes con selección de recompensa, control de stock y comprobante de contribución (HU-10, HU-11, HU-12).
 - Vista de administrador sobre las campañas de toda la plataforma.
+- Gestión de usuarios para administrador: listado, creación, edición, deshabilitación y eliminación (HU-21), sobre una tabla de usuarios simulada.
 - Rutas protegidas para usuarios autenticados.
 
-> **Integración parcial con el backend.** El registro, el inicio de sesión (JWT), la edición de perfil, la recarga de saldo y la consulta de saldo/historial usan el backend real. Las campañas, los aportes con recompensa, el comprobante y las notificaciones siguen simulados en el navegador (`localStorage`) hasta conectar los endpoints `/api/campaigns`. Ver [Integración con el Backend](#integración-con-el-backend).
+> **Integración parcial con el backend.** El registro, el inicio de sesión (JWT), la edición de perfil, la recarga de saldo y la consulta de saldo/historial usan el backend real. Las campañas, los aportes con recompensa, el comprobante, las notificaciones y la gestión de usuarios (HU-21) siguen simulados en el navegador (`localStorage`) hasta conectar los endpoints `/api/campaigns`. Ver [Integración con el Backend](#integración-con-el-backend).
 
 ---
 
@@ -45,10 +46,10 @@ Este repositorio ya incluye:
 src
 ├── api/             # Cliente axios (JWT) y módulos del backend: auth, users, mappers
 ├── context/         # UserContext: sesión y saldo (backend) + campañas y aportes simulados
-├── lib/             # Utilidades (formato de moneda y fechas) y cuentas de demostración
+├── lib/             # Utilidades (moneda y fechas), validaciones y cuentas de demostración
 ├── pages/           # Vistas: Auth, Explore, CampaignDetail, CampaignForm, Dashboard,
-│                    #         MyCampaigns, Wallet, Profile, Notifications, PanelLayout
-├── routes.tsx       # Definición de rutas y guarda RequireAuth
+│                    #         MyCampaigns, Wallet, Profile, Notifications, Users, PanelLayout
+├── routes.tsx       # Definición de rutas y guardas RequireAuth / RequireAdmin
 ├── App.tsx
 ├── main.tsx
 └── index.css
@@ -116,7 +117,7 @@ Permiten probar la interfaz sin backend. Sus datos (saldo, historial, perfil) se
 | Patrocinador | `user@catalyst.com` | `Demo1234!` |
 | Administrador | `admin@catalyst.com` | `Admin1234!` |
 
-Estos correos están reservados: nunca se consultan en el backend. Para usar datos reales, regístrate en `/auth` (contraseña de 8 a 16 caracteres, con 1 mayúscula, 1 número y 1 carácter especial) o inicia sesión con una cuenta existente en el backend.
+Estos correos están reservados: nunca se consultan en el backend. Los usuarios que un administrador crea desde `/usuarios` también inician sesión de forma local. Para usar datos reales, regístrate en `/auth` (contraseña de 8 a 16 caracteres, con 1 mayúscula, 1 número y 1 carácter especial) o inicia sesión con una cuenta existente en el backend.
 
 ---
 
@@ -144,7 +145,13 @@ Estos correos están reservados: nunca se consultan en el backend. Para usar dat
 | `/campanas/:id/editar` | Editar campaña activa (solo el creador o un administrador) | HU-07 |
 | `/notificaciones` | Notificaciones del usuario | HU-08 |
 
-Si el usuario no ha iniciado sesión, `RequireAuth` lo redirige al inicio de sesión.
+### Solo administrador
+
+| Ruta | Descripción | HU |
+|------|-------------|----|
+| `/usuarios` | Listado, filtros, creación, edición, deshabilitación y eliminación de usuarios | HU-21 |
+
+Si el usuario no ha iniciado sesión, `RequireAuth` lo redirige al inicio de sesión. Si no es administrador, `RequireAdmin` muestra un aviso de acceso restringido.
 
 ---
 
@@ -154,7 +161,7 @@ El rol llega desde el backend al iniciar sesión:
 
 - `sponsor`: patrocinador (rol por defecto).
 - `creator`: creador de campañas.
-- `admin`: administrador; puede editar y cambiar el estado de cualquier campaña y ve las métricas de toda la plataforma.
+- `admin`: administrador; puede editar y cambiar el estado de cualquier campaña, ve las métricas de toda la plataforma y gestiona usuarios en `/usuarios`.
 
 En la interfaz actual cualquier usuario autenticado puede publicar campañas y aportar; el rol se muestra en el panel principal.
 
@@ -184,6 +191,16 @@ En la interfaz actual cualquier usuario autenticado puede publicar campañas y a
 - **Comprobante:** resumen de la transacción con campaña, monto, recompensa y saldo restante.
 - **Prueba del caso de error (HU-12):** la pantalla de aporte incluye la casilla "Demo: simular error de procesamiento"; al marcarla, el aporte falla, se muestra el error y no se descuenta saldo.
 
+### Administración de usuarios (HU-21)
+
+- **Listado:** nombre, correo, rol (Usuario Normal / Administrador) y estado (Activo / Inactivo), con búsqueda y filtros.
+- **Crear:** nombre, correo, rol y contraseña (8-16 caracteres, 1 mayúscula, 1 número y 1 carácter especial). El usuario creado puede iniciar sesión.
+- **Editar:** nombre, correo y rol; se rechazan campos vacíos y correos que ya pertenecen a otro usuario.
+- **Deshabilitar / eliminar:** si la cuenta tiene recargas, campañas o aportes, se deshabilita y se conserva su historial; si no, se elimina. Una cuenta inactiva no puede iniciar sesión.
+- **Permisos:** solo los administradores acceden al módulo, y un administrador no puede deshabilitar ni eliminar su propia cuenta ni quitarse el rol.
+
+> El backend aún no expone endpoints para administrar usuarios, así que este módulo trabaja sobre una tabla simulada en el navegador. Las cuentas que inician sesión con el backend se agregan a esa tabla al entrar. Los cambios que un administrador haga aquí a cuentas reales no se envían al backend; el propio nombre y correo se cambian desde Perfil.
+
 ---
 
 ## Integración con el Backend
@@ -196,6 +213,7 @@ La capa `src/api` consume el backend con axios (`baseURL` = `VITE_API_URL` + `/a
 | `users.ts` | `GET /users/balance`, `PUT /users/profile`, `POST /users/recharge` | Conectado |
 | Campañas | `/api/campaigns`, `/api/categories` | Pendiente (simulado) |
 | Aportes | `/api/campaigns/{id}/contributions[/confirm]` | Pendiente (simulado) |
+| Gestión de usuarios (HU-21) | Sin endpoints en el backend | Simulado |
 
 Comportamiento:
 
@@ -209,7 +227,7 @@ Pendiente:
 - [ ] Conectar campañas (HU-06 a HU-09) a `/api/campaigns`.
 - [ ] Conectar aportes con recompensa y comprobante (HU-10 a HU-12) a `/contributions/confirm`.
 - [ ] Mostrar las campañas del balance (`campaigns` de `/users/balance`) cuando las campañas sean reales.
-- [ ] Página de gestión de usuarios para administrador (HU-21).
+- [ ] Conectar la gestión de usuarios (HU-21) a endpoints de administración del backend, cuando existan.
 
 ---
 
@@ -236,7 +254,6 @@ Con npm usar `npm run <script>`.
 ## Próximos Pasos / Roadmap
 
 - [ ] Integración completa con el backend (campañas y aportes)
-- [ ] CRUD de usuarios para administrador (HU-21)
 - [ ] Retiro de fondos (creadores)
 - [ ] Tests unitarios y end-to-end
 - [ ] CI/CD con GitHub Actions
