@@ -4,7 +4,6 @@ import {
   AlertCircle,
   CheckCircle2,
   Eye,
-  KeyRound,
   Megaphone,
   PauseCircle,
   Pencil,
@@ -32,31 +31,13 @@ export function MyCampaigns() {
   const { user, campaigns, changeCampaignStatus } = useUser();
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [closingId, setClosingId] = useState<string | null>(null);
-  const [closePin, setClosePin] = useState("");
-  const [closePassword, setClosePassword] = useState("");
-  const [closeError, setCloseError] = useState("");
-
-  const openCloseBox = (id: string | null) => {
-    setClosingId(id);
-    setClosePin("");
-    setClosePassword("");
-    setCloseError("");
-  };
 
   const isAdmin = user?.role === "admin";
   const managedCampaigns = isAdmin ? campaigns : campaigns.filter((c) => c.creatorEmail === user?.email);
 
-  const handleStatusChange = async (campaign: Campaign, status: CampaignStatus) => {
-    const result = await changeCampaignStatus(
-      campaign.id,
-      status,
-      status === "closed" ? { pin: closePin, password: closePassword } : undefined,
-    );
-    if (status === "closed" && !result.ok) {
-      setCloseError(result.error);
-      return;
-    }
-    openCloseBox(null);
+  const handleStatusChange = (campaign: Campaign, status: CampaignStatus) => {
+    setClosingId(null);
+    const result = changeCampaignStatus(campaign.id, status);
     setFeedback(
       result.ok
         ? { campaignId: campaign.id, type: "success", message: STATUS_MESSAGES[status](campaign) }
@@ -111,11 +92,6 @@ export function MyCampaigns() {
                       {formatDate(c.deadline)}
                       {isAdmin && ` · ${c.creatorName}`}
                     </p>
-                    {isAdmin && (
-                      <p className="panel__list-sub inline-icon" style={{ marginTop: "0.25rem" }}>
-                        <KeyRound size={12} /> Contraseña de campaña: <strong style={{ letterSpacing: "0.12em" }}>{c.pin}</strong>
-                      </p>
-                    )}
                   </div>
                 </div>
 
@@ -132,41 +108,11 @@ export function MyCampaigns() {
                       ¿Cerrar "{c.title}" definitivamente? No podrá reabrirse y se notificará a los{" "}
                       {c.backerEmails.length} patrocinadores.
                     </p>
-                    <div className="form-grid">
-                      <div className="form-field">
-                        <label htmlFor={`close-pin-${c.id}`} className="field-label">Contraseña de campaña</label>
-                        <input
-                          id={`close-pin-${c.id}`}
-                          type="password"
-                          inputMode="numeric"
-                          maxLength={6}
-                          className="amount-input"
-                          placeholder="6 dígitos"
-                          value={closePin}
-                          onChange={(e) => { setClosePin(e.target.value.replace(/\D/g, "")); setCloseError(""); }}
-                        />
-                      </div>
-                      <div className="form-field">
-                        <label htmlFor={`close-password-${c.id}`} className="field-label">Contraseña de la cuenta</label>
-                        <input
-                          id={`close-password-${c.id}`}
-                          type="password"
-                          className="amount-input"
-                          value={closePassword}
-                          onChange={(e) => { setClosePassword(e.target.value); setCloseError(""); }}
-                        />
-                      </div>
-                    </div>
-                    {closeError && <p className="field-error">{closeError}</p>}
                     <div className="action-row">
-                      <button className="btn-ghost" onClick={() => openCloseBox(null)}>
+                      <button className="btn-ghost" onClick={() => setClosingId(null)}>
                         Cancelar
                       </button>
-                      <button
-                        className="btn-danger"
-                        disabled={closePin.length !== 6 || !closePassword}
-                        onClick={() => handleStatusChange(c, "closed")}
-                      >
+                      <button className="btn-danger" onClick={() => handleStatusChange(c, "closed")}>
                         Sí, cerrar campaña
                       </button>
                     </div>
@@ -192,7 +138,7 @@ export function MyCampaigns() {
                       </button>
                     )}
                     {c.status !== "closed" ? (
-                      <button className="btn-outline btn-outline--danger" onClick={() => openCloseBox(c.id)}>
+                      <button className="btn-outline btn-outline--danger" onClick={() => setClosingId(c.id)}>
                         <XCircle size={14} /> Cerrar
                       </button>
                     ) : (

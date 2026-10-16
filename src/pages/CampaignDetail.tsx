@@ -35,7 +35,7 @@ export function CampaignDetail() {
   const [activeImage, setActiveImage] = useState(0);
   const [amount, setAmount] = useState("");
   const [rewardId, setRewardId] = useState<string | null>(null);
-  const [password, setPassword] = useState("");
+  const [simulateFailure, setSimulateFailure] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [contributionFeedback, setContributionFeedback] = useState<Feedback>(null);
   const [receipt, setReceipt] = useState<ContributionReceipt | null>(null);
@@ -86,9 +86,8 @@ export function CampaignDetail() {
 
     setIsProcessing(true);
     // Simulated payment processing delay.
-    setTimeout(async () => {
-      const result = await contribute(campaign.id, parsedAmount, rewardId, { password });
-      setPassword("");
+    setTimeout(() => {
+      const result = contribute(campaign.id, parsedAmount, rewardId, { simulateFailure });
       setIsProcessing(false);
       if (!result.ok) {
         setContributionFeedback({
@@ -313,24 +312,16 @@ export function CampaignDetail() {
                   </div>
                 )}
 
-                <div className="form-field">
-                  <label htmlFor="contribution-password" className="field-label">
-                    Contraseña de la cuenta
-                  </label>
+                <label className="demo-check">
                   <input
-                    id="contribution-password"
-                    type="password"
-                    className="amount-input"
-                    placeholder="Confirma tu identidad"
-                    value={password}
-                    onChange={(e) => {
-                      setPassword(e.target.value);
-                      setContributionFeedback(null);
-                    }}
+                    type="checkbox"
+                    checked={simulateFailure}
+                    onChange={(e) => setSimulateFailure(e.target.checked)}
                   />
-                </div>
+                  Demo: simular error de procesamiento
+                </label>
 
-                <button type="submit" className="panel__submit" disabled={!amount || !password || isProcessing}>
+                <button type="submit" className="panel__submit" disabled={!amount || isProcessing}>
                   {isProcessing ? (
                     <span className="inline-icon">
                       <Loader2 size={15} className="spin" /> Procesando…

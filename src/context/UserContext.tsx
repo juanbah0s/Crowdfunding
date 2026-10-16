@@ -56,8 +56,6 @@ export interface Campaign {
   backerEmails: string[];
   contributionsCount: number;
   createdAt: string;
-  /** 6-digit campaign password required to edit or close this campaign. */
-  pin: string;
 }
 
 export interface User {
@@ -117,7 +115,6 @@ export interface CampaignDraft {
   deadline: string;
   images: string[];
   rewards: Omit<Reward, "id">[];
-  pin: string;
 }
 
 export interface CampaignChanges {
@@ -136,24 +133,19 @@ interface UserContextType {
   login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
   logout: () => void;
-  updateProfile: (name: string, email: string, password: string) => Promise<ActionResult>;
-  verifyPassword: (password: string) => Promise<boolean>;
+  updateProfile: (name: string, email: string) => Promise<ActionResult>;
   recharge: (amount: number) => Promise<void>;
   refreshBalance: () => Promise<void>;
   canManageCampaign: (campaign: Campaign) => boolean;
   publishCampaign: (draft: CampaignDraft) => ActionResult<Campaign>;
-  updateCampaign: (id: string, changes: CampaignChanges, pin: string) => ActionResult;
-  changeCampaignStatus: (
-    id: string,
-    status: CampaignStatus,
-    credentials?: { pin: string; password: string },
-  ) => Promise<ActionResult>;
+  updateCampaign: (id: string, changes: CampaignChanges) => ActionResult;
+  changeCampaignStatus: (id: string, status: CampaignStatus) => ActionResult;
   contribute: (
     campaignId: string,
     amount: number,
     rewardId: string | null,
-    options: { password: string; simulateFailure?: boolean },
-  ) => Promise<ActionResult<ContributionReceipt>>;
+    options?: { simulateFailure?: boolean },
+  ) => ActionResult<ContributionReceipt>;
   markNotificationsRead: () => void;
 }
 
@@ -175,10 +167,7 @@ function unsplash(id: string) {
 }
 
 
-// Campaign passwords for the seeded demo campaigns (also applied to older saved data).
-const DEFAULT_PINS: Record<string, string> = { "1": "482915", "2": "730264", "3": "159357", "4": "246810", "5": "908172" };
-
-const MOCK_CAMPAIGN_SEED: Omit<Campaign, "pin">[] = [
+const MOCK_CAMPAIGNS: Campaign[] = [
   {
     id: "1",
     title: "EcoTech Innovación",
@@ -285,8 +274,6 @@ const MOCK_CAMPAIGN_SEED: Omit<Campaign, "pin">[] = [
   },
 ];
 
-const MOCK_CAMPAIGNS = withPins(MOCK_CAMPAIGN_SEED);
-
 const UserContext = createContext<UserContextType | null>(null);
 
 // Campañas, notificaciones y aportes simulados (todavía sin endpoint en el frontend).
@@ -310,17 +297,13 @@ interface Session {
   demo?: boolean;
 }
 
-function withPins(list: Omit<Campaign, "pin">[] | Campaign[]): Campaign[] {
-  return list.map((c) => ({ ...c, pin: (c as Campaign).pin ?? DEFAULT_PINS[c.id] ?? "000000" }));
-}
-
 function loadState(): PersistedState | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const state = JSON.parse(raw) as Partial<PersistedState>;
     return {
-      campaigns: withPins(state.campaigns ?? MOCK_CAMPAIGNS),
+      campaigns: state.campaigns ?? MOCK_CAMPAIGNS,
       notifications: state.notifications ?? [],
       localTransactions: state.localTransactions ?? [],
     };
@@ -481,18 +464,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
     setServerTransactions([]);
   };
 
-  const verifyPassword = (password: string) => {
-    if (!session) return Promise.resolve(false);
-    if (session.demo) return Promise.resolve(checkPassword(session.email, password));
-    return authApi.verifyPassword(session.email, password);
-  };
-
-  const updateProfile = async (name: string, email: string, password: string): Promise<ActionResult> => {
+  const updateProfile = async (name: string, email: string): Promise<ActionResult> => {
     if (!session) return { ok: false, error: "Debes iniciar sesión." };
     try {
-      if (!(await verifyPassword(password))) {
-        return { ok: false, error: "Contraseña incorrecta. No se guardaron los cambios." };
-      }
       if (session.demo) {
         if (email !== session.email && findAccount(email)) {
           return { ok: false, error: "Este correo ya está registrado por otra cuenta." };
@@ -543,12 +517,6 @@ export function UserProvider({ children }: { children: ReactNode }) {
     if (!(draft.goal > 0)) {
       return { ok: false, error: "La meta de financiación debe ser mayor a cero." };
     }
-    if (!/^\d{6}$/.test(draft.pin)) {
-      return { ok: false, error: "La contraseña de campaña debe tener exactamente 6 dígitos." };
-    }
-    if (campaigns.some((c) => c.creatorEmail === user.email && c.pin === draft.pin)) {
-      return { ok: false, error: "Ya usas esa contraseña en otra de tus campañas. Elige una diferente." };
-    }
     const campaign: Campaign = {
       id: createId("C"),
       title: draft.title.trim(),
@@ -565,13 +533,12 @@ export function UserProvider({ children }: { children: ReactNode }) {
       backerEmails: [],
       contributionsCount: 0,
       createdAt: today(),
-      pin: draft.pin,
     };
     setCampaigns((prev) => [campaign, ...prev]);
     return { ok: true, data: campaign };
   };
 
-  const updateCampaign = (id: string, changes: CampaignChanges, pin: string): ActionResult => {
+  const updateCampaign = (id: string, changes: CampaignChanges): ActionResult => {
     const campaign = campaigns.find((c) => c.id === id);
     if (!campaign) return { ok: false, error: "La campaña no existe." };
     if (!canManageCampaign(campaign)) {
@@ -579,9 +546,6 @@ export function UserProvider({ children }: { children: ReactNode }) {
     }
     if (campaign.status !== "active") {
       return { ok: false, error: "Solo se pueden editar campañas activas." };
-    }
-    if (pin !== campaign.pin) {
-      return { ok: false, error: "La contraseña de campaña es incorrecta." };
     }
     if (!changes.title.trim() || !changes.description.trim()) {
       return { ok: false, error: "Completa los campos obligatorios antes de guardar." };
@@ -615,7 +579,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     return { ok: true, data: undefined };
   };
 
-  const changeCampaignStatus: UserContextType["changeCampaignStatus"] = async (id, status, credentials) => {
+  const changeCampaignStatus = (id: string, status: CampaignStatus): ActionResult => {
     const campaign = campaigns.find((c) => c.id === id);
     if (!campaign) return { ok: false, error: "La campaña no existe." };
     if (!canManageCampaign(campaign)) {
@@ -626,14 +590,6 @@ export function UserProvider({ children }: { children: ReactNode }) {
     }
     if (campaign.status === "closed") {
       return { ok: false, error: "La campaña está cerrada de forma permanente." };
-    }
-    if (status === "closed") {
-      if (!credentials || credentials.pin !== campaign.pin) {
-        return { ok: false, error: "La contraseña de campaña es incorrecta." };
-      }
-      if (!(await verifyPassword(credentials.password))) {
-        return { ok: false, error: "La contraseña de la cuenta es incorrecta." };
-      }
     }
     setCampaigns((prev) => prev.map((c) => (c.id === id ? { ...c, status } : c)));
 
@@ -655,11 +611,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
     return { ok: true, data: undefined };
   };
 
-  const contribute: UserContextType["contribute"] = async (campaignId, amount, rewardId, options) => {
+  const contribute: UserContextType["contribute"] = (campaignId, amount, rewardId, options) => {
     if (!user) return { ok: false, error: "Debes iniciar sesión para aportar." };
-    if (!(await verifyPassword(options.password))) {
-      return { ok: false, error: "Contraseña incorrecta. El aporte no se procesó." };
-    }
     const campaign = campaigns.find((c) => c.id === campaignId);
     if (!campaign) return { ok: false, error: "La campaña no existe." };
     if (campaign.status !== "active") {
@@ -759,7 +712,6 @@ export function UserProvider({ children }: { children: ReactNode }) {
         register,
         logout,
         updateProfile,
-        verifyPassword,
         recharge,
         refreshBalance,
         canManageCampaign,
