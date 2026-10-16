@@ -3,6 +3,7 @@ import { Link, Navigate, useNavigate } from "react-router";
 import { CheckCircle2, AlertCircle } from "lucide-react";
 import { useUser } from "../context/UserContext";
 import { getApiError } from "../api/client";
+import { isValidEmail, isValidPassword, PASSWORD_ERROR } from "../lib/validation";
 import "./Auth.css";
 
 
@@ -53,16 +54,6 @@ export function Auth() {
     ? formData.email.trim() !== "" && formData.password !== ""
     : formData.name.trim() !== "" && formData.email.trim() !== "" && formData.password !== "";
 
-  const validatePassword = (password: string) => {
-    return (
-      password.length >= 8 &&
-      password.length <= 16 &&
-      /[A-Z]/.test(password) &&
-      /[0-9]/.test(password) &&
-      /[!@#$%^&*(),.?":{}|<>]/.test(password)
-    );
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setStatus({ type: null, message: "" });
@@ -72,11 +63,12 @@ export function Auth() {
         setStatus({ type: "error", message: "Por favor completa todos los campos." });
         return;
       }
-      if (!validatePassword(formData.password)) {
-        setStatus({
-          type: "error",
-          message: "La contraseña debe tener 8-16 caracteres, 1 mayúscula, 1 número y 1 carácter especial.",
-        });
+      if (!isValidEmail(formData.email)) {
+        setStatus({ type: "error", message: "Ingresa un correo electrónico válido." });
+        return;
+      }
+      if (!isValidPassword(formData.password)) {
+        setStatus({ type: "error", message: PASSWORD_ERROR });
         return;
       }
     } else if (!formData.email || !formData.password) {

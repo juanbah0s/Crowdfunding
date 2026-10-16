@@ -42,11 +42,7 @@ export function Profile() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !email.trim()) {
-      setStatus({ type: "error", message: "Por favor completa todos los campos obligatorios antes de continuar." });
-      return;
-    }
-    const result = await updateProfile(name.trim(), email.trim());
+    const result = await updateProfile(name, email);
     if (!result.ok) {
       setStatus({ type: "error", message: result.error });
       return;

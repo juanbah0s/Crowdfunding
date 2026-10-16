@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, ReactNode } from "react";
+import { isValidEmail, isValidPassword, normalizeEmail, PASSWORD_ERROR } from "../lib/validation";
 import { authApi } from "../api/auth";
 import { checkPassword, findAccount, renameAccount } from "../lib/accounts";
 import { usersApi } from "../api/users";
@@ -28,9 +29,40 @@ export interface Transaction {
   rewardTitle?: string;
   /** Solo en aportes simulados localmente: usuario que los hizo. */
   userId?: string;
+  /** Correo del dueño de la transacción (para el rastro financiero de HU-21). */
+  userEmail?: string;
 }
 
 export type TransactionItem = Transaction;
+
+export type AccountRole = "user" | "admin";
+export type AccountStatus = "active" | "inactive";
+
+/** Cuenta registrada en la plataforma (tabla de usuarios simulada de HU-21). */
+export interface Account {
+  id: string;
+  name: string;
+  email: string;
+  role: AccountRole;
+  status: AccountStatus;
+  /** Solo en cuentas creadas por un administrador: permiten iniciar sesión localmente. */
+  password?: string;
+  createdAt: string;
+}
+
+export interface AccountInput {
+  name: string;
+  email: string;
+  role: AccountRole;
+}
+
+/** Registros financieros que ligan una cuenta al historial de la plataforma. */
+export interface FinancialFootprint {
+  recharges: number;
+  campaigns: number;
+  contributions: number;
+  total: number;
+}
 
 export interface Reward {
   id: string;
@@ -130,6 +162,7 @@ interface UserContextType {
   transactions: Transaction[];
   campaigns: Campaign[];
   notifications: Notification[];
+  accounts: Account[];
   login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
   logout: () => void;
@@ -147,6 +180,12 @@ interface UserContextType {
     options?: { simulateFailure?: boolean },
   ) => ActionResult<ContributionReceipt>;
   markNotificationsRead: () => void;
+  isSelf: (account: Account) => boolean;
+  getFinancialFootprint: (email: string) => FinancialFootprint;
+  createAccount: (input: AccountInput & { password: string }) => ActionResult<Account>;
+  updateAccount: (id: string, input: AccountInput) => ActionResult;
+  setAccountStatus: (id: string, status: AccountStatus) => ActionResult;
+  removeAccount: (id: string) => ActionResult<"deleted" | "deactivated">;
 }
 
 // Placeholder owner replaced by the logged-in user's email so the demo has campaigns to manage.
@@ -280,6 +319,7 @@ const UserContext = createContext<UserContextType | null>(null);
 const STORAGE_KEY = "catalyst-state-v2";
 
 interface PersistedState {
+  accounts?: Account[];
   campaigns: Campaign[];
   notifications: Notification[];
   localTransactions: Transaction[];
@@ -303,6 +343,7 @@ function loadState(): PersistedState | null {
     if (!raw) return null;
     const state = JSON.parse(raw) as Partial<PersistedState>;
     return {
+      accounts: state.accounts,
       campaigns: state.campaigns ?? MOCK_CAMPAIGNS,
       notifications: state.notifications ?? [],
       localTransactions: state.localTransactions ?? [],
@@ -336,6 +377,40 @@ const DEMO_TRANSACTIONS: Omit<Transaction, "userId">[] = [
   { id: "T003", date: "2026-09-10", type: "contribution", amount: 50000, campaignId: "2", campaignName: "AgroSmart Colombia" },
 ];
 
+// Tabla de usuarios simulada (HU-21). Solo las tres cuentas de demostración pueden iniciar sesión;
+// el resto son registros para probar el listado, los filtros y la baja con historial.
+const SEED_ACCOUNTS: Omit<Account, "id" | "createdAt">[] = [
+  { name: "Administrador", email: "admin@catalyst.com", role: "admin", status: "active" },
+  { name: "Usuario Demo", email: "test@example.com", role: "user", status: "active" },
+  { name: "Catalyst User", email: "user@catalyst.com", role: "user", status: "active" },
+  { name: "Mariana Soto", email: "soporte@catalyst.com", role: "admin", status: "active" },
+  { name: "Laura Méndez", email: "laura@ecotech.co", role: "user", status: "active" },
+  { name: "Andrés Rojas", email: "andres@agrosmart.co", role: "user", status: "active" },
+  { name: "Colectivo Raíz", email: "hola@raiz.org", role: "user", status: "active" },
+  { name: "Marcos Peña", email: "marcos@mail.com", role: "user", status: "active" },
+  { name: "Sofía Cárdenas", email: "sofia@mail.com", role: "user", status: "active" },
+  { name: "Carla Ruiz", email: "carla@mail.com", role: "user", status: "active" },
+  { name: "Pedro Gómez", email: "pedro@mail.com", role: "user", status: "active" },
+  { name: "Lucía Torres", email: "lucia@mail.com", role: "user", status: "active" },
+  { name: "Ana Morales", email: "ana@mail.com", role: "user", status: "inactive" },
+  { name: "Jorge Díaz", email: "jorge@mail.com", role: "user", status: "active" },
+  { name: "Valentina Ríos", email: "valentina@mail.com", role: "user", status: "active" },
+  { name: "Diego Herrera", email: "diego@mail.com", role: "user", status: "active" },
+  { name: "Camila Ortiz", email: "camila@mail.com", role: "user", status: "inactive" },
+];
+
+function seedAccounts(): Account[] {
+  return SEED_ACCOUNTS.map((a, i) => ({ ...a, id: `U${String(i + 1).padStart(3, "0")}`, createdAt: addDays(-90 + i * 4) }));
+}
+
+// Recargas de cuentas semilla: permiten probar la baja de usuarios con historial financiero.
+const SEED_FOOTPRINT_TX: Transaction[] = [
+  { id: "T004", date: "2026-08-22", type: "recharge", amount: 200000, userEmail: "marcos@mail.com" },
+  { id: "T005", date: "2026-08-28", type: "recharge", amount: 150000, userEmail: "valentina@mail.com" },
+];
+
+const sessionRoleFor = (role: AccountRole): UserRole => (role === "admin" ? "admin" : "sponsor");
+
 function createId(prefix: string) {
   return `${prefix}${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
 }
@@ -344,17 +419,18 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(initialSession);
   const [serverTransactions, setServerTransactions] = useState<Transaction[]>([]);
   const [localTransactions, setLocalTransactions] = useState<Transaction[]>(initialState?.localTransactions ?? []);
+  const [accounts, setAccounts] = useState<Account[]>(() => initialState?.accounts ?? seedAccounts());
   const [campaigns, setCampaigns] = useState<Campaign[]>(initialState?.campaigns ?? MOCK_CAMPAIGNS);
   const [notifications, setNotifications] = useState<Notification[]>(initialState?.notifications ?? []);
 
   // Mantiene la base de datos simulada (campañas, notificaciones, aportes locales) entre recargas.
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ campaigns, notifications, localTransactions }));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ accounts, campaigns, notifications, localTransactions }));
     } catch {
       // Storage quota exceeded (e.g. large uploaded images); keep working in memory.
     }
-  }, [campaigns, notifications, localTransactions]);
+  }, [accounts, campaigns, notifications, localTransactions]);
 
   useEffect(() => {
     try {
@@ -418,42 +494,79 @@ export function UserProvider({ children }: { children: ReactNode }) {
       })),
     );
 
-  const loginDemo = (email: string): boolean => {
-    const account = findAccount(email);
-    if (!account) return false;
-    const id = `demo:${account.email}`;
+  /** Inicia una sesión local (sin backend): cuentas de demostración y cuentas creadas por un administrador. */
+  const startLocalSession = (info: { id: string; name: string; email: string; role: UserRole }) => {
     authApi.logout(); // descarta cualquier token de una sesión real anterior
-    setSession({
-      id,
-      name: account.name,
-      email: account.email,
-      role: account.role ?? "sponsor",
-      balance: DEMO_BASE_BALANCE,
-      historic: 0,
-      demo: true,
-    });
+    setSession({ ...info, balance: DEMO_BASE_BALANCE, historic: 0, demo: true });
     setServerTransactions([]);
     setLocalTransactions((prev) =>
-      prev.some((t) => t.userId === id) ? prev : [...DEMO_TRANSACTIONS.map((t) => ({ ...t, userId: id })), ...prev],
+      prev.some((t) => t.userId === info.id)
+        ? prev
+        : [...DEMO_TRANSACTIONS.map((t) => ({ ...t, userId: info.id, userEmail: info.email })), ...prev],
     );
-    remapDemoOwner(account.name, account.email);
-    return true;
+    remapDemoOwner(info.name, info.email);
+  };
+
+  const invalidCredentials = () => ({ response: { data: { message: "Credenciales inválidas." } } });
+
+  const upsertAccount = (u: { name: string; email: string; role: UserRole }) => {
+    const email = normalizeEmail(u.email);
+    setAccounts((prev) =>
+      prev.some((a) => a.email === email)
+        ? prev.map((a) => (a.email === email ? { ...a, name: u.name } : a))
+        : [
+            ...prev,
+            {
+              id: createId("U"),
+              name: u.name,
+              email,
+              role: u.role === "admin" ? "admin" : "user",
+              status: "active",
+              createdAt: today(),
+            },
+          ],
+    );
   };
 
   const login = async (email: string, password: string) => {
-    // Las cuentas de demostración funcionan sin backend; cualquier otra va a la API real.
-    if (findAccount(email)) {
-      // Correo reservado para demostración: no se consulta el backend.
-      if (checkPassword(email, password) && loginDemo(email)) return;
-      throw { response: { data: { message: "Credenciales inválidas." } } };
+    const registered = accounts.find((a) => a.email === normalizeEmail(email));
+    if (registered?.status === "inactive") {
+      throw { response: { data: { message: "Tu cuenta está inactiva. Contacta a un administrador para recuperar el acceso." } } };
+    }
+    // Cuentas de demostración: funcionan sin backend. Su rol sale de la tabla de usuarios.
+    const demo = findAccount(email);
+    if (demo) {
+      if (!checkPassword(email, password)) throw invalidCredentials();
+      startLocalSession({
+        id: `demo:${demo.email}`,
+        name: demo.name,
+        email: demo.email,
+        role: registered ? sessionRoleFor(registered.role) : (demo.role ?? "sponsor"),
+      });
+      return;
+    }
+    // Cuentas creadas por un administrador desde el módulo de usuarios (locales).
+    if (registered?.password !== undefined) {
+      if (registered.password !== password) throw invalidCredentials();
+      startLocalSession({
+        id: `local:${registered.id}`,
+        name: registered.name,
+        email: registered.email,
+        role: sessionRoleFor(registered.role),
+      });
+      return;
     }
     const u = await authApi.login({ email, password });
     setSession({ id: u.id, name: u.name, email: u.email, role: u.role, balance: u.balance, historic: u.historic });
+    upsertAccount(u);
     remapDemoOwner(u.name, u.email);
     await refreshBalance();
   };
 
   const register = async (name: string, email: string, password: string) => {
+    if (accounts.some((a) => a.email === normalizeEmail(email))) {
+      throw { response: { data: { message: "Este correo ya está registrado." } } };
+    }
     await authApi.register({ name, email, password });
     await login(email, password);
   };
@@ -464,22 +577,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
     setServerTransactions([]);
   };
 
-  const updateProfile = async (name: string, email: string): Promise<ActionResult> => {
-    if (!session) return { ok: false, error: "Debes iniciar sesión." };
-    try {
-      if (session.demo) {
-        if (email !== session.email && findAccount(email)) {
-          return { ok: false, error: "Este correo ya está registrado por otra cuenta." };
-        }
-        renameAccount(session.email, name, email);
-      } else {
-        await usersApi.updateProfile({ name, email });
-      }
-    } catch (err) {
-      return { ok: false, error: getApiError(err, "No se pudo actualizar el perfil.") };
-    }
-    const previousEmail = session.email;
-    setSession({ ...session, name, email });
+  // Propaga un cambio de nombre/correo a todos los registros que referencian la cuenta.
+  const renameIdentity = (previousEmail: string, name: string, email: string) => {
     setCampaigns((prev) =>
       prev.map((c) => ({
         ...c,
@@ -488,6 +587,43 @@ export function UserProvider({ children }: { children: ReactNode }) {
         backerEmails: c.backerEmails.map((b) => (b === previousEmail ? email : b)),
       })),
     );
+    setLocalTransactions((prev) => prev.map((t) => (t.userEmail === previousEmail ? { ...t, userEmail: email } : t)));
+    setNotifications((prev) =>
+      prev.map((n) => (n.recipientEmail === previousEmail ? { ...n, recipientEmail: email } : n)),
+    );
+  };
+
+  const emailTakenByOther = (email: string, ownEmail: string) => {
+    const normalized = normalizeEmail(email);
+    return normalized !== normalizeEmail(ownEmail) && accounts.some((a) => a.email === normalized);
+  };
+
+  const updateProfile = async (name: string, email: string): Promise<ActionResult> => {
+    if (!session) return { ok: false, error: "Debes iniciar sesión." };
+    if (!name.trim() || !email.trim()) {
+      return { ok: false, error: "Por favor completa todos los campos obligatorios antes de continuar." };
+    }
+    if (!isValidEmail(email)) return { ok: false, error: "Ingresa un correo electrónico válido." };
+    if (emailTakenByOther(email, session.email)) {
+      return { ok: false, error: "El correo ya pertenece a otro usuario registrado." };
+    }
+    const previousEmail = session.email;
+    const nextName = name.trim();
+    const nextEmail = normalizeEmail(email);
+    try {
+      if (session.demo) {
+        if (findAccount(previousEmail)) renameAccount(previousEmail, nextName, nextEmail);
+      } else {
+        await usersApi.updateProfile({ name: nextName, email: nextEmail });
+      }
+    } catch (err) {
+      return { ok: false, error: getApiError(err, "No se pudo actualizar el perfil.") };
+    }
+    setSession({ ...session, name: nextName, email: nextEmail });
+    setAccounts((prev) =>
+      prev.map((a) => (a.email === normalizeEmail(previousEmail) ? { ...a, name: nextName, email: nextEmail } : a)),
+    );
+    renameIdentity(previousEmail, nextName, nextEmail);
     return { ok: true, data: undefined };
   };
 
@@ -496,7 +632,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     if (session.demo) {
       setSession((prev) => (prev ? { ...prev, balance: prev.balance + amount } : prev));
       setLocalTransactions((prev) => [
-        { id: `T${Date.now()}`, date: today(), type: "recharge" as const, amount, userId: session.id },
+        { id: `T${Date.now()}`, date: today(), type: "recharge" as const, amount, userId: session.id, userEmail: session.email },
         ...prev,
       ]);
       return;
@@ -507,6 +643,111 @@ export function UserProvider({ children }: { children: ReactNode }) {
       setSession((prev) => (prev ? { ...prev, balance: newBalance } : prev));
     }
     await refreshBalance();
+  };
+
+  // --- Administración de usuarios (solo administradores) ------------------------
+
+  const isSelf = (account: Account) => !!session && normalizeEmail(session.email) === account.email;
+
+  const getFinancialFootprint = (email: string): FinancialFootprint => {
+    // Para la sesión con backend se suman también sus recargas y aportes reales.
+    const own = session && !session.demo && normalizeEmail(session.email) === normalizeEmail(email);
+    const records: Transaction[] = [
+      ...SEED_FOOTPRINT_TX,
+      ...localTransactions,
+      ...(own ? serverTransactions.map((t) => ({ ...t, userEmail: session.email })) : []),
+    ];
+    const recharges = records.filter((t) => t.type === "recharge" && t.userEmail === email).length;
+    const created = campaigns.filter((c) => c.creatorEmail === email).length;
+    const contributions = Math.max(
+      records.filter((t) => t.type === "contribution" && t.userEmail === email).length,
+      campaigns.filter((c) => c.backerEmails.includes(email)).length,
+    );
+    return { recharges, campaigns: created, contributions, total: recharges + created + contributions };
+  };
+
+  const adminGuard = (): { ok: false; error: string } | null =>
+    user?.role === "admin"
+      ? null
+      : { ok: false, error: "Permiso denegado: solo un administrador puede gestionar usuarios." };
+
+  const validateAccountInput = (input: AccountInput, ownEmail = ""): string | null => {
+    if (!input.name.trim() || !input.email.trim() || !input.role) {
+      return "Completa todos los campos obligatorios: nombre, correo electrónico y rol.";
+    }
+    if (!isValidEmail(input.email)) return "Ingresa un correo electrónico válido.";
+    if (emailTakenByOther(input.email, ownEmail)) return "El correo ya pertenece a otro usuario registrado.";
+    return null;
+  };
+
+  const createAccount: UserContextType["createAccount"] = (input) => {
+    const denied = adminGuard();
+    if (denied) return denied;
+    const error = validateAccountInput(input);
+    if (error) return { ok: false, error };
+    if (!isValidPassword(input.password)) return { ok: false, error: PASSWORD_ERROR };
+    const account: Account = {
+      id: createId("U"),
+      name: input.name.trim(),
+      email: normalizeEmail(input.email),
+      role: input.role,
+      status: "active",
+      password: input.password,
+      createdAt: today(),
+    };
+    setAccounts((prev) => [account, ...prev]);
+    return { ok: true, data: account };
+  };
+
+  const updateAccount: UserContextType["updateAccount"] = (id, input) => {
+    const denied = adminGuard();
+    if (denied) return denied;
+    const account = accounts.find((a) => a.id === id);
+    if (!account) return { ok: false, error: "El usuario no existe." };
+    const error = validateAccountInput(input, account.email);
+    if (error) return { ok: false, error };
+    const self = isSelf(account);
+    if (self && input.role !== "admin") {
+      return { ok: false, error: "No puedes quitarte el rol de administrador desde este módulo." };
+    }
+    const name = input.name.trim();
+    const email = normalizeEmail(input.email);
+    if (self && session && !session.demo && (name !== account.name || email !== account.email)) {
+      // La cuenta real vive en el backend: sus datos se editan desde el perfil.
+      return { ok: false, error: "Para cambiar tu nombre o correo usa la página de Perfil." };
+    }
+    if (findAccount(account.email)) renameAccount(account.email, name, email);
+    setAccounts((prev) => prev.map((a) => (a.id === id ? { ...a, name, email, role: input.role } : a)));
+    renameIdentity(account.email, name, email);
+    if (self) setSession((prev) => (prev ? { ...prev, name, email } : prev));
+    return { ok: true, data: undefined };
+  };
+
+  const setAccountStatus: UserContextType["setAccountStatus"] = (id, status) => {
+    const denied = adminGuard();
+    if (denied) return denied;
+    const account = accounts.find((a) => a.id === id);
+    if (!account) return { ok: false, error: "El usuario no existe." };
+    if (status === "inactive" && isSelf(account)) {
+      return { ok: false, error: "No puedes deshabilitar tu propia cuenta mientras está activa." };
+    }
+    setAccounts((prev) => prev.map((a) => (a.id === id ? { ...a, status } : a)));
+    return { ok: true, data: undefined };
+  };
+
+  const removeAccount: UserContextType["removeAccount"] = (id) => {
+    const denied = adminGuard();
+    if (denied) return denied;
+    const account = accounts.find((a) => a.id === id);
+    if (!account) return { ok: false, error: "El usuario no existe." };
+    if (isSelf(account)) return { ok: false, error: "No puedes eliminar tu propia cuenta mientras está activa." };
+    if (getFinancialFootprint(account.email).total > 0) {
+      // Se conserva la cuenta y su historial para garantizar la trazabilidad; solo se revoca el acceso.
+      setAccounts((prev) => prev.map((a) => (a.id === id ? { ...a, status: "inactive" } : a)));
+      return { ok: true, data: "deactivated" };
+    }
+    setAccounts((prev) => prev.filter((a) => a.id !== id));
+    return { ok: true, data: "deleted" };
   };
 
   const canManageCampaign = (campaign: Campaign) =>
@@ -663,6 +904,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
         campaignName: campaign.title,
         rewardTitle: reward?.title,
         userId: user.id,
+        userEmail: user.email,
       },
       ...prev,
     ]);
@@ -708,12 +950,19 @@ export function UserProvider({ children }: { children: ReactNode }) {
         transactions,
         campaigns,
         notifications,
+        accounts,
         login,
         register,
         logout,
         updateProfile,
         recharge,
         refreshBalance,
+        isSelf,
+        getFinancialFootprint,
+        createAccount,
+        updateAccount,
+        setAccountStatus,
+        removeAccount,
         canManageCampaign,
         publishCampaign,
         updateCampaign,
