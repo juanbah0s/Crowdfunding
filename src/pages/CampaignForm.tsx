@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router";
-import { AlertCircle, ArrowLeft, ImagePlus, KeyRound, Lock, Plus, Trash2, X, Gift } from "lucide-react";
+import { AlertCircle, ArrowLeft, ImagePlus, Lock, Plus, Trash2, X, Gift } from "lucide-react";
 import { useUser, CAMPAIGN_CATEGORIES } from "../context/UserContext";
 import type { Campaign } from "../context/UserContext";
 import { formatCurrency } from "../lib/campaignUtils";
@@ -48,8 +48,6 @@ function CampaignForm({ campaign }: { campaign?: Campaign }) {
   const [deadline, setDeadline] = useState(campaign?.deadline ?? "");
   const [images, setImages] = useState<string[]>(campaign?.images ?? []);
   const [rewards, setRewards] = useState<RewardInput[]>([]);
-  const [pin, setPin] = useState("");
-  const [pinConfirm, setPinConfirm] = useState("");
   const [errors, setErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState("");
 
@@ -103,9 +101,6 @@ function CampaignForm({ campaign }: { campaign?: Campaign }) {
       else if (deadline < getTomorrow()) next.deadline = "La fecha límite debe ser posterior a hoy.";
     }
 
-    if (!/^\d{6}$/.test(pin)) next.pin = "Ingresa un PIN de exactamente 6 dígitos.";
-    else if (!isEditing && pin !== pinConfirm) next.pinConfirm = "Las contraseñas de campaña no coinciden.";
-
     if (!isEditing) {
       rewards.forEach((r, i) => {
         const minAmount = Number(r.minAmount);
@@ -141,7 +136,7 @@ function CampaignForm({ campaign }: { campaign?: Campaign }) {
         description,
         images,
         ...(isFundingLocked ? {} : { goal: Number(goal), deadline }),
-      }, pin);
+      });
       if (!result.ok) {
         setFormError(result.error);
         return;
@@ -163,7 +158,6 @@ function CampaignForm({ campaign }: { campaign?: Campaign }) {
         minAmount: Number(r.minAmount),
         stock: Number(r.stock),
       })),
-      pin,
     });
     if (!result.ok) {
       setFormError(result.error);
@@ -430,57 +424,6 @@ function CampaignForm({ campaign }: { campaign?: Campaign }) {
               ))}
             </div>
           )}
-        </section>
-
-        <section className="panel__card form-section">
-          <h2 className="panel__card-title inline-icon">
-            <KeyRound size={16} /> Contraseña de campaña
-          </h2>
-          <p className="field-hint" style={{ margin: 0 }}>
-            {isEditing
-              ? "Ingresa la contraseña de 6 dígitos de esta campaña para guardar los cambios."
-              : "PIN de 6 dígitos exclusivo de esta campaña. Se pedirá para editarla o cerrarla; guárdalo en un lugar seguro."}
-          </p>
-          <div className="form-grid">
-            <div className="form-field">
-              <label htmlFor="campaign-pin" className="field-label">Contraseña de campaña *</label>
-              <input
-                id="campaign-pin"
-                type="password"
-                inputMode="numeric"
-                autoComplete="off"
-                maxLength={6}
-                placeholder="••••••"
-                className={`amount-input${errors.pin ? " input--error" : ""}`}
-                value={pin}
-                onChange={(e) => {
-                  setPin(e.target.value.replace(/\D/g, ""));
-                  clearError("pin");
-                }}
-              />
-              {fieldError("pin")}
-            </div>
-            {!isEditing && (
-              <div className="form-field">
-                <label htmlFor="campaign-pin-confirm" className="field-label">Confirmar contraseña *</label>
-                <input
-                  id="campaign-pin-confirm"
-                  type="password"
-                  inputMode="numeric"
-                  autoComplete="off"
-                  maxLength={6}
-                  placeholder="••••••"
-                  className={`amount-input${errors.pinConfirm ? " input--error" : ""}`}
-                  value={pinConfirm}
-                  onChange={(e) => {
-                    setPinConfirm(e.target.value.replace(/\D/g, ""));
-                    clearError("pinConfirm");
-                  }}
-                />
-                {fieldError("pinConfirm")}
-              </div>
-            )}
-          </div>
         </section>
 
         {formError && (

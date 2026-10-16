@@ -182,6 +182,7 @@ En la interfaz actual cualquier usuario autenticado puede publicar campañas y a
 - **Aporte:** monto mayor a cero y no superior al saldo; si el saldo es insuficiente se sugiere recargar.
 - **Recompensas:** solo seleccionables si el monto alcanza el mínimo; las agotadas se muestran deshabilitadas y se descuenta una unidad de stock al confirmar.
 - **Comprobante:** resumen de la transacción con campaña, monto, recompensa y saldo restante.
+- **Prueba del caso de error (HU-12):** la pantalla de aporte incluye la casilla "Demo: simular error de procesamiento"; al marcarla, el aporte falla, se muestra el error y no se descuenta saldo.
 
 ---
 
@@ -200,7 +201,6 @@ Comportamiento:
 
 - El token se guarda en `localStorage` y se envía como `Authorization: Bearer <token>`.
 - Ante un `401` fuera de login/registro se cierra la sesión y se redirige a `/auth`.
-- La contraseña que piden el perfil, los aportes y el cierre de campañas se valida contra `POST /auth/login` (en las cuentas de demostración, contra los datos locales).
 - Los errores se muestran con el `message` (o el primer `details`) que devuelve el backend.
 - Mientras los aportes sean simulados, su monto se descuenta del saldo real solo en el navegador; al conectar `/contributions/confirm` el saldo vendrá completo del backend.
 

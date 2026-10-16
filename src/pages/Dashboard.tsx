@@ -41,7 +41,7 @@ export function Dashboard() {
     <main className="panel__main">
       <div>
         <h1 className="panel__heading">Bienvenido, {user?.name.split(" ")[0]}.</h1>
-        <p className="panel__subheading">{isAdmin ? "Administrador" : user?.role === "creator" ? "Creador de proyectos" : "Patrocinador"} · Panel principal</p>
+        <p className="panel__subheading">{isAdmin ? "Administrador" : "Usuario"} · Panel principal</p>
       </div>
 
       {/* Stats row */}
@@ -179,7 +179,7 @@ export function Dashboard() {
                     <Link to={`/campanas/${c.id}`} className="panel__list-label" style={{ textDecoration: "none" }}>
                       {c.title}
                     </Link>
-                    <span className="panel__list-amount" style={{ color: "#000" }}>{fmt(c.contributed)}</span>
+                    <span className="panel__list-amount panel__list-amount--debit">{fmt(c.contributed)}</span>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
                     <div className="progress" style={{ flex: 1, marginTop: 0 }}>

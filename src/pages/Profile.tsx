@@ -33,14 +33,12 @@ export function Profile() {
   const { user, updateProfile } = useUser();
   const [name, setName] = useState(user?.name ?? "");
   const [email, setEmail] = useState(user?.email ?? "");
-  const [password, setPassword] = useState("");
   const [status, setStatus] = useState<{ type: "success" | "error" | null; message: string }>({
     type: null,
     message: "",
   });
 
-  const hasChanges = name.trim() !== user?.name || email.trim() !== user?.email;
-  const canSave = name.trim() !== "" && email.trim() !== "" && hasChanges && password !== "";
+  const canSave = name.trim() !== "" && email.trim() !== "";
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,8 +46,7 @@ export function Profile() {
       setStatus({ type: "error", message: "Por favor completa todos los campos obligatorios antes de continuar." });
       return;
     }
-    const result = await updateProfile(name.trim(), email.trim(), password);
-    setPassword("");
+    const result = await updateProfile(name.trim(), email.trim());
     if (!result.ok) {
       setStatus({ type: "error", message: result.error });
       return;
@@ -89,21 +86,6 @@ export function Profile() {
             value={email}
             onChange={(v) => { setEmail(v); setStatus({ type: null, message: "" }); }}
           />
-
-          {hasChanges && (
-            <>
-              <p style={{ margin: "0.5rem 0 0", fontSize: "0.8rem", color: "#71717a" }}>
-                Por seguridad, confirma tu contraseña para guardar los cambios.
-              </p>
-              <FloatingField
-                id="profile-password"
-                label="Contraseña actual"
-                type="password"
-                value={password}
-                onChange={(v) => { setPassword(v); setStatus({ type: null, message: "" }); }}
-              />
-            </>
-          )}
 
           <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "0.5rem" }}>
             <button type="submit" disabled={!canSave} className="panel__submit">
