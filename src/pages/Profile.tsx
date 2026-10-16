@@ -42,13 +42,13 @@ export function Profile() {
   const hasChanges = name.trim() !== user?.name || email.trim() !== user?.email;
   const canSave = name.trim() !== "" && email.trim() !== "" && hasChanges && password !== "";
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !email.trim()) {
       setStatus({ type: "error", message: "Por favor completa todos los campos obligatorios antes de continuar." });
       return;
     }
-    const result = updateProfile(name.trim(), email.trim(), password);
+    const result = await updateProfile(name.trim(), email.trim(), password);
     setPassword("");
     if (!result.ok) {
       setStatus({ type: "error", message: result.error });

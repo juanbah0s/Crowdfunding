@@ -46,8 +46,8 @@ export function MyCampaigns() {
   const isAdmin = user?.role === "admin";
   const managedCampaigns = isAdmin ? campaigns : campaigns.filter((c) => c.creatorEmail === user?.email);
 
-  const handleStatusChange = (campaign: Campaign, status: CampaignStatus) => {
-    const result = changeCampaignStatus(
+  const handleStatusChange = async (campaign: Campaign, status: CampaignStatus) => {
+    const result = await changeCampaignStatus(
       campaign.id,
       status,
       status === "closed" ? { pin: closePin, password: closePassword } : undefined,

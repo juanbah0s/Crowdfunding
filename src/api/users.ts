@@ -1,10 +1,10 @@
 import { api } from './client';
-import { toUser, toBalanceResponse } from './mappers';
+import { toBalanceResponse } from './mappers';
 
 export const usersApi = {
   getBalance: async () => {
     const res = await api.get('/users/balance');
-    return res.data;
+    return toBalanceResponse(res.data);
   },
 
   updateProfile: async (data: { name: string; email: string }) => {
@@ -14,6 +14,6 @@ export const usersApi = {
 
   recharge: async (amount: number) => {
     const res = await api.post('/users/recharge', { amount });
-    return res.data;
+    return res.data as { id?: string; balance?: number | string; newBalance?: number | string; message?: string };
   },
 };

@@ -1,7 +1,10 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, ReactNode } from "react";
+import { authApi } from "../api/auth";
 import { checkPassword, findAccount, renameAccount } from "../lib/accounts";
+import { usersApi } from "../api/users";
+import { getApiError, SESSION_KEY, TOKEN_KEY } from "../api/client";
 
-export type UserRole = "user" | "admin";
+export type UserRole = "creator" | "sponsor" | "admin";
 
 export type CampaignStatus = "active" | "paused" | "closed";
 
@@ -23,7 +26,11 @@ export interface Transaction {
   campaignId?: string;
   campaignName?: string;
   rewardTitle?: string;
+  /** Solo en aportes simulados localmente: usuario que los hizo. */
+  userId?: string;
 }
+
+export type TransactionItem = Transaction;
 
 export interface Reward {
   id: string;
@@ -54,10 +61,29 @@ export interface Campaign {
 }
 
 export interface User {
+  id: string;
   name: string;
   email: string;
   role: UserRole;
+  /** Saldo disponible: saldo real del backend menos los aportes simulados localmente. */
   balance: number;
+  /** Total histórico aportado según el backend. */
+  historic: number;
+}
+
+export interface CampaignSummary {
+  id: string;
+  title: string;
+  raised: number;
+  goal: number;
+  contributed: number;
+}
+
+export interface BalanceResponse {
+  balance: number;
+  historic: number;
+  campaigns: CampaignSummary[];
+  history: TransactionItem[];
 }
 
 export interface Notification {
@@ -107,11 +133,13 @@ interface UserContextType {
   transactions: Transaction[];
   campaigns: Campaign[];
   notifications: Notification[];
-  login: (name: string, email: string, role?: UserRole) => void;
+  login: (email: string, password: string) => Promise<void>;
+  register: (name: string, email: string, password: string) => Promise<void>;
   logout: () => void;
-  updateProfile: (name: string, email: string, password: string) => ActionResult;
-  verifyPassword: (password: string) => boolean;
-  recharge: (amount: number) => void;
+  updateProfile: (name: string, email: string, password: string) => Promise<ActionResult>;
+  verifyPassword: (password: string) => Promise<boolean>;
+  recharge: (amount: number) => Promise<void>;
+  refreshBalance: () => Promise<void>;
   canManageCampaign: (campaign: Campaign) => boolean;
   publishCampaign: (draft: CampaignDraft) => ActionResult<Campaign>;
   updateCampaign: (id: string, changes: CampaignChanges, pin: string) => ActionResult;
@@ -119,13 +147,13 @@ interface UserContextType {
     id: string,
     status: CampaignStatus,
     credentials?: { pin: string; password: string },
-  ) => ActionResult;
+  ) => Promise<ActionResult>;
   contribute: (
     campaignId: string,
     amount: number,
     rewardId: string | null,
     options: { password: string; simulateFailure?: boolean },
-  ) => ActionResult<ContributionReceipt>;
+  ) => Promise<ActionResult<ContributionReceipt>>;
   markNotificationsRead: () => void;
 }
 
@@ -259,21 +287,27 @@ const MOCK_CAMPAIGN_SEED: Omit<Campaign, "pin">[] = [
 
 const MOCK_CAMPAIGNS = withPins(MOCK_CAMPAIGN_SEED);
 
-const MOCK_TRANSACTIONS: Transaction[] = [
-  { id: "T001", date: "2026-09-01", type: "recharge", amount: 500000 },
-  { id: "T002", date: "2026-09-05", type: "contribution", amount: 100000, campaignId: "1", campaignName: "EcoTech Innovación" },
-  { id: "T003", date: "2026-09-10", type: "contribution", amount: 50000, campaignId: "2", campaignName: "AgroSmart Colombia" },
-];
-
 const UserContext = createContext<UserContextType | null>(null);
 
+// Campañas, notificaciones y aportes simulados (todavía sin endpoint en el frontend).
 const STORAGE_KEY = "catalyst-state-v2";
 
 interface PersistedState {
-  user: User | null;
-  transactions: Transaction[];
   campaigns: Campaign[];
   notifications: Notification[];
+  localTransactions: Transaction[];
+}
+
+/** Perfil de la sesión + saldo según el backend. El token JWT vive aparte, en localStorage. */
+interface Session {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  balance: number;
+  historic: number;
+  /** Cuenta de demostración: funciona sin backend, con datos locales. */
+  demo?: boolean;
 }
 
 function withPins(list: Omit<Campaign, "pin">[] | Campaign[]): Campaign[] {
@@ -284,36 +318,114 @@ function loadState(): PersistedState | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
-    const state = JSON.parse(raw) as PersistedState;
-    return { ...state, campaigns: withPins(state.campaigns) };
+    const state = JSON.parse(raw) as Partial<PersistedState>;
+    return {
+      campaigns: withPins(state.campaigns ?? MOCK_CAMPAIGNS),
+      notifications: state.notifications ?? [],
+      localTransactions: state.localTransactions ?? [],
+    };
+  } catch {
+    return null;
+  }
+}
+
+function loadSession(): Session | null {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+    const stored = JSON.parse(raw) as Session;
+    // Sin token no hay sesión válida (salvo en cuentas de demostración, que no usan backend).
+    if (!stored.demo && !localStorage.getItem(TOKEN_KEY)) return null;
+    return stored;
   } catch {
     return null;
   }
 }
 
 const initialState = loadState();
+const initialSession = loadSession();
+
+// Historial inicial de las cuentas de demostración: 500.000 recargados y 150.000 aportados => saldo de 350.000.
+const DEMO_BASE_BALANCE = 500000;
+const DEMO_TRANSACTIONS: Omit<Transaction, "userId">[] = [
+  { id: "T001", date: "2026-09-01", type: "recharge", amount: 500000 },
+  { id: "T002", date: "2026-09-05", type: "contribution", amount: 100000, campaignId: "1", campaignName: "EcoTech Innovación" },
+  { id: "T003", date: "2026-09-10", type: "contribution", amount: 50000, campaignId: "2", campaignName: "AgroSmart Colombia" },
+];
 
 function createId(prefix: string) {
   return `${prefix}${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
 }
 
 export function UserProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(initialState?.user ?? null);
-  const [transactions, setTransactions] = useState<Transaction[]>(initialState?.transactions ?? MOCK_TRANSACTIONS);
+  const [session, setSession] = useState<Session | null>(initialSession);
+  const [serverTransactions, setServerTransactions] = useState<Transaction[]>([]);
+  const [localTransactions, setLocalTransactions] = useState<Transaction[]>(initialState?.localTransactions ?? []);
   const [campaigns, setCampaigns] = useState<Campaign[]>(initialState?.campaigns ?? MOCK_CAMPAIGNS);
   const [notifications, setNotifications] = useState<Notification[]>(initialState?.notifications ?? []);
 
-  // Keep the session and the simulated database across reloads.
+  // Mantiene la base de datos simulada (campañas, notificaciones, aportes locales) entre recargas.
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ user, transactions, campaigns, notifications }));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ campaigns, notifications, localTransactions }));
     } catch {
       // Storage quota exceeded (e.g. large uploaded images); keep working in memory.
     }
-  }, [user, transactions, campaigns, notifications]);
+  }, [campaigns, notifications, localTransactions]);
 
-  const login = (name: string, email: string, role: UserRole = "user") => {
-    setUser({ name, email, role, balance: 350000 });
+  useEffect(() => {
+    try {
+      if (session) localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+      else localStorage.removeItem(SESSION_KEY);
+    } catch {
+      // ignore
+    }
+  }, [session]);
+
+  // Los aportes a campañas aún son simulados: se descuentan del saldo real para que
+  // el saldo mostrado sea coherente tras recargar la página.
+  const localSpent = useMemo(
+    () =>
+      session
+        ? localTransactions
+            .filter((t) => t.type === "contribution" && t.userId === session.id)
+            .reduce((sum, t) => sum + t.amount, 0)
+        : 0,
+    [localTransactions, session],
+  );
+
+  const user: User | null = useMemo(
+    () => (session ? { ...session, balance: session.balance - localSpent } : null),
+    [session, localSpent],
+  );
+
+  const transactions = useMemo(
+    () =>
+      session
+        ? [...localTransactions.filter((t) => t.userId === session.id), ...serverTransactions].sort((a, b) =>
+            b.date.localeCompare(a.date),
+          )
+        : [],
+    [localTransactions, serverTransactions, session],
+  );
+
+  const refreshBalance = useCallback(async () => {
+    if (initialSession?.demo) return;
+    try {
+      const detail = await usersApi.getBalance();
+      setSession((prev) => (prev ? { ...prev, balance: detail.balance, historic: detail.historic } : prev));
+      setServerTransactions(detail.history);
+    } catch (err) {
+      console.error("Error refreshing balance:", err);
+    }
+  }, []);
+
+  // Al abrir la app con una sesión guardada, sincroniza saldo e historial con el backend.
+  useEffect(() => {
+    if (initialSession && !initialSession.demo) void refreshBalance();
+  }, [refreshBalance]);
+
+  const remapDemoOwner = (name: string, email: string) =>
     setCampaigns((prev) =>
       prev.map((c) => ({
         ...c,
@@ -322,21 +434,78 @@ export function UserProvider({ children }: { children: ReactNode }) {
         backerEmails: c.backerEmails.map((b) => (b === "__self__" ? email : b)),
       })),
     );
+
+  const loginDemo = (email: string): boolean => {
+    const account = findAccount(email);
+    if (!account) return false;
+    const id = `demo:${account.email}`;
+    authApi.logout(); // descarta cualquier token de una sesión real anterior
+    setSession({
+      id,
+      name: account.name,
+      email: account.email,
+      role: account.role ?? "sponsor",
+      balance: DEMO_BASE_BALANCE,
+      historic: 0,
+      demo: true,
+    });
+    setServerTransactions([]);
+    setLocalTransactions((prev) =>
+      prev.some((t) => t.userId === id) ? prev : [...DEMO_TRANSACTIONS.map((t) => ({ ...t, userId: id })), ...prev],
+    );
+    remapDemoOwner(account.name, account.email);
+    return true;
   };
 
-  const logout = () => setUser(null);
-
-  const verifyPassword = (password: string) => !!user && checkPassword(user.email, password);
-
-  const updateProfile = (name: string, email: string, password: string): ActionResult => {
-    if (!user) return { ok: false, error: "Debes iniciar sesión." };
-    if (!verifyPassword(password)) return { ok: false, error: "Contraseña incorrecta. No se guardaron los cambios." };
-    const previousEmail = user.email;
-    if (email !== previousEmail && findAccount(email)) {
-      return { ok: false, error: "Este correo ya está registrado por otra cuenta." };
+  const login = async (email: string, password: string) => {
+    // Las cuentas de demostración funcionan sin backend; cualquier otra va a la API real.
+    if (findAccount(email)) {
+      // Correo reservado para demostración: no se consulta el backend.
+      if (checkPassword(email, password) && loginDemo(email)) return;
+      throw { response: { data: { message: "Credenciales inválidas." } } };
     }
-    renameAccount(previousEmail, name, email);
-    setUser({ ...user, name, email });
+    const u = await authApi.login({ email, password });
+    setSession({ id: u.id, name: u.name, email: u.email, role: u.role, balance: u.balance, historic: u.historic });
+    remapDemoOwner(u.name, u.email);
+    await refreshBalance();
+  };
+
+  const register = async (name: string, email: string, password: string) => {
+    await authApi.register({ name, email, password });
+    await login(email, password);
+  };
+
+  const logout = () => {
+    authApi.logout();
+    setSession(null);
+    setServerTransactions([]);
+  };
+
+  const verifyPassword = (password: string) => {
+    if (!session) return Promise.resolve(false);
+    if (session.demo) return Promise.resolve(checkPassword(session.email, password));
+    return authApi.verifyPassword(session.email, password);
+  };
+
+  const updateProfile = async (name: string, email: string, password: string): Promise<ActionResult> => {
+    if (!session) return { ok: false, error: "Debes iniciar sesión." };
+    try {
+      if (!(await verifyPassword(password))) {
+        return { ok: false, error: "Contraseña incorrecta. No se guardaron los cambios." };
+      }
+      if (session.demo) {
+        if (email !== session.email && findAccount(email)) {
+          return { ok: false, error: "Este correo ya está registrado por otra cuenta." };
+        }
+        renameAccount(session.email, name, email);
+      } else {
+        await usersApi.updateProfile({ name, email });
+      }
+    } catch (err) {
+      return { ok: false, error: getApiError(err, "No se pudo actualizar el perfil.") };
+    }
+    const previousEmail = session.email;
+    setSession({ ...session, name, email });
     setCampaigns((prev) =>
       prev.map((c) => ({
         ...c,
@@ -348,18 +517,22 @@ export function UserProvider({ children }: { children: ReactNode }) {
     return { ok: true, data: undefined };
   };
 
-  const recharge = (amount: number) => {
-    if (!user) return;
-    setUser((prev) => (prev ? { ...prev, balance: prev.balance + amount } : prev));
-    setTransactions((prev) => [
-      {
-        id: `T${Date.now()}`,
-        date: today(),
-        type: "recharge" as const,
-        amount,
-      },
-      ...prev,
-    ]);
+  const recharge = async (amount: number) => {
+    if (!session) return;
+    if (session.demo) {
+      setSession((prev) => (prev ? { ...prev, balance: prev.balance + amount } : prev));
+      setLocalTransactions((prev) => [
+        { id: `T${Date.now()}`, date: today(), type: "recharge" as const, amount, userId: session.id },
+        ...prev,
+      ]);
+      return;
+    }
+    const res = await usersApi.recharge(amount);
+    const newBalance = Number(res.balance ?? res.newBalance);
+    if (Number.isFinite(newBalance)) {
+      setSession((prev) => (prev ? { ...prev, balance: newBalance } : prev));
+    }
+    await refreshBalance();
   };
 
   const canManageCampaign = (campaign: Campaign) =>
@@ -442,7 +615,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     return { ok: true, data: undefined };
   };
 
-  const changeCampaignStatus: UserContextType["changeCampaignStatus"] = (id, status, credentials) => {
+  const changeCampaignStatus: UserContextType["changeCampaignStatus"] = async (id, status, credentials) => {
     const campaign = campaigns.find((c) => c.id === id);
     if (!campaign) return { ok: false, error: "La campaña no existe." };
     if (!canManageCampaign(campaign)) {
@@ -458,7 +631,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
       if (!credentials || credentials.pin !== campaign.pin) {
         return { ok: false, error: "La contraseña de campaña es incorrecta." };
       }
-      if (!verifyPassword(credentials.password)) {
+      if (!(await verifyPassword(credentials.password))) {
         return { ok: false, error: "La contraseña de la cuenta es incorrecta." };
       }
     }
@@ -482,9 +655,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
     return { ok: true, data: undefined };
   };
 
-  const contribute: UserContextType["contribute"] = (campaignId, amount, rewardId, options) => {
+  const contribute: UserContextType["contribute"] = async (campaignId, amount, rewardId, options) => {
     if (!user) return { ok: false, error: "Debes iniciar sesión para aportar." };
-    if (!verifyPassword(options.password)) {
+    if (!(await verifyPassword(options.password))) {
       return { ok: false, error: "Contraseña incorrecta. El aporte no se procesó." };
     }
     const campaign = campaigns.find((c) => c.id === campaignId);
@@ -514,7 +687,6 @@ export function UserProvider({ children }: { children: ReactNode }) {
     const date = today();
     const remainingBalance = user.balance - amount;
 
-    setUser({ ...user, balance: remainingBalance });
     setCampaigns((prev) =>
       prev.map((c) =>
         c.id === campaignId
@@ -528,7 +700,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
           : c,
       ),
     );
-    setTransactions((prev) => [
+    setLocalTransactions((prev) => [
       {
         id: transactionId,
         date,
@@ -537,6 +709,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
         campaignId,
         campaignName: campaign.title,
         rewardTitle: reward?.title,
+        userId: user.id,
       },
       ...prev,
     ]);
@@ -583,10 +756,12 @@ export function UserProvider({ children }: { children: ReactNode }) {
         campaigns,
         notifications,
         login,
+        register,
         logout,
         updateProfile,
         verifyPassword,
         recharge,
+        refreshBalance,
         canManageCampaign,
         publishCampaign,
         updateCampaign,

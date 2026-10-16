@@ -86,8 +86,8 @@ export function CampaignDetail() {
 
     setIsProcessing(true);
     // Simulated payment processing delay.
-    setTimeout(() => {
-      const result = contribute(campaign.id, parsedAmount, rewardId, { password });
+    setTimeout(async () => {
+      const result = await contribute(campaign.id, parsedAmount, rewardId, { password });
       setPassword("");
       setIsProcessing(false);
       if (!result.ok) {

@@ -41,7 +41,7 @@ export function Dashboard() {
     <main className="panel__main">
       <div>
         <h1 className="panel__heading">Bienvenido, {user?.name.split(" ")[0]}.</h1>
-        <p className="panel__subheading">{isAdmin ? "Administrador" : "Usuario"} · Panel principal</p>
+        <p className="panel__subheading">{isAdmin ? "Administrador" : user?.role === "creator" ? "Creador de proyectos" : "Patrocinador"} · Panel principal</p>
       </div>
 
       {/* Stats row */}

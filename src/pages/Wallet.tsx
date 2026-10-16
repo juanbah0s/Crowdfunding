@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { CheckCircle2, AlertCircle } from "lucide-react";
 import { useUser } from "../context/UserContext";
+import { getApiError } from "../api/client";
 
 const MIN = 10000;
 const MAX = 1000000;
@@ -30,7 +31,7 @@ export function Wallet() {
   });
 
 
-  const handleRecharge = (e: React.FormEvent) => {
+  const handleRecharge = async (e: React.FormEvent) => {
     e.preventDefault();
     setStatus({ type: null, message: "" });
 
@@ -49,12 +50,16 @@ export function Wallet() {
       return;
     }
 
-    recharge(parsed);
-    setStatus({
-      type: "success",
-      message: `Recarga de ${fmt(parsed)} realizada exitosamente. Tu saldo ha sido actualizado.`,
-    });
-    setAmount("");
+    try {
+      await recharge(parsed);
+      setStatus({
+        type: "success",
+        message: `Recarga de ${fmt(parsed)} realizada exitosamente. Tu saldo ha sido actualizado.`,
+      });
+      setAmount("");
+    } catch (err) {
+      setStatus({ type: "error", message: getApiError(err, "No se pudo realizar la recarga.") });
+    }
   };
 
   return (

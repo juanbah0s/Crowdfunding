@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router";
 import { CheckCircle2, AlertCircle } from "lucide-react";
 import { useUser } from "../context/UserContext";
-import { addAccount, checkPassword, findAccount } from "../lib/accounts";
+import { getApiError } from "../api/client";
 import "./Auth.css";
 
 
@@ -37,7 +37,9 @@ function FloatingField({ id, label, type = "text", value, onChange, trailing }: 
 
 export function Auth() {
   const navigate = useNavigate();
-  const { user, login } = useUser();
+  const { user, login, register } = useUser();
+  // Evita redirigir antes de mostrar el mensaje de éxito cuando el contexto ya tiene al usuario.
+  const redirecting = useRef(false);
   const [isLogin, setIsLogin] = useState(true);
   const [formData, setFormData] = useState({ name: "", email: "", password: "" });
   const [showPassword, setShowPassword] = useState(false);
@@ -45,6 +47,7 @@ export function Auth() {
     type: null,
     message: "",
   });
+  const [submitting, setSubmitting] = useState(false);
 
   const canSubmit = isLogin
     ? formData.email.trim() !== "" && formData.password !== ""
@@ -60,17 +63,13 @@ export function Auth() {
     );
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setStatus({ type: null, message: "" });
 
     if (!isLogin) {
       if (!formData.name || !formData.email || !formData.password) {
         setStatus({ type: "error", message: "Por favor completa todos los campos." });
-        return;
-      }
-      if (findAccount(formData.email)) {
-        setStatus({ type: "error", message: "Este correo ya está registrado." });
         return;
       }
       if (!validatePassword(formData.password)) {
@@ -80,28 +79,35 @@ export function Auth() {
         });
         return;
       }
+    } else if (!formData.email || !formData.password) {
+      setStatus({ type: "error", message: "Por favor ingresa tu correo y contraseña." });
+      return;
+    }
 
-      addAccount({ email: formData.email, name: formData.name, password: formData.password });
-      login(formData.name, formData.email);
-      setStatus({ type: "success", message: "¡Cuenta creada exitosamente! Redirigiendo..." });
-      setTimeout(() => navigate("/"), 1200);
-    } else {
-      if (!formData.email || !formData.password) {
-        setStatus({ type: "error", message: "Por favor ingresa tu correo y contraseña." });
-        return;
-      }
-      const found = findAccount(formData.email);
-      if (found && checkPassword(found.email, formData.password)) {
-        login(found.name, found.email, found.role ?? "user");
+    setSubmitting(true);
+    redirecting.current = true;
+    try {
+      if (!isLogin) {
+        await register(formData.name, formData.email, formData.password);
+        setStatus({ type: "success", message: "¡Cuenta creada exitosamente! Redirigiendo..." });
+        setTimeout(() => navigate("/"), 1200);
+      } else {
+        await login(formData.email, formData.password);
         setStatus({ type: "success", message: "Sesión iniciada correctamente. Redirigiendo..." });
         setTimeout(() => navigate("/"), 1000);
-      } else {
-        setStatus({ type: "error", message: "Credenciales inválidas." });
       }
+    } catch (err) {
+      redirecting.current = false;
+      setStatus({
+        type: "error",
+        message: getApiError(err, isLogin ? "Credenciales inválidas." : "No se pudo crear la cuenta."),
+      });
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  if (user && status.type !== "success") return <Navigate to="/" replace />;
+  if (user && !redirecting.current && status.type !== "success") return <Navigate to="/" replace />;
 
   return (
     <div className="auth">
@@ -166,7 +172,7 @@ export function Auth() {
               }
             />
 
-            <button type="submit" disabled={!canSubmit} className="auth__submit">
+            <button type="submit" disabled={!canSubmit || submitting} className="auth__submit">
               {isLogin ? "Iniciar sesión" : "Registrarse"}
             </button>
           </form>
