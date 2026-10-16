@@ -20,7 +20,7 @@ Este repositorio ya incluye:
 - Vista de administrador sobre las campañas de toda la plataforma.
 - Rutas protegidas para usuarios autenticados.
 
-> **Modo actual: datos simulados.** Hoy la aplicación funciona de forma autónoma: el estado (usuario, campañas, transacciones y notificaciones) se guarda en `localStorage` y se inicia con campañas y cuentas de demostración. La capa `src/api` (axios) ya existe para el backend, pero las páginas todavía no la usan. Ver la sección [Integración con el Backend](#integración-con-el-backend).
+> **Integración parcial con el backend.** El registro, el inicio de sesión (JWT), la edición de perfil, la recarga de saldo y la consulta de saldo/historial usan el backend real. Las campañas, los aportes con recompensa, el comprobante y las notificaciones siguen simulados en el navegador (`localStorage`) hasta conectar los endpoints `/api/campaigns`. Ver [Integración con el Backend](#integración-con-el-backend).
 
 ---
 
@@ -43,9 +43,9 @@ Este repositorio ya incluye:
 
 ```
 src
-├── api/             # Cliente axios y módulos del backend (auth, users, mappers)
-├── context/         # UserContext: estado global, reglas de negocio simuladas y persistencia local
-├── lib/             # Utilidades (formato de moneda/fechas, cuentas demo)
+├── api/             # Cliente axios (JWT) y módulos del backend: auth, users, mappers
+├── context/         # UserContext: sesión y saldo (backend) + campañas y aportes simulados
+├── lib/             # Utilidades (formato de moneda y fechas) y cuentas de demostración
 ├── pages/           # Vistas: Auth, Explore, CampaignDetail, CampaignForm, Dashboard,
 │                    #         MyCampaigns, Wallet, Profile, Notifications, PanelLayout
 ├── routes.tsx       # Definición de rutas y guarda RequireAuth
@@ -62,7 +62,24 @@ El alias `@` apunta a `src`.
 
 - **Node.js** 22 o superior
 - **pnpm** (o npm)
-- **Backend** (opcional por ahora): cuando se integre, por defecto en `http://localhost:8081`.
+- **Backend en ejecución** (por defecto en `http://localhost:8081`): necesario para registrarse y usar cuentas reales. Las [cuentas de demostración](#cuentas-de-demostración) funcionan sin backend. Ver el README del repositorio del backend.
+
+---
+
+## Variables y Configuración
+
+Opcionalmente, crear un archivo `.env` en la raíz para cambiar la URL del backend:
+
+```bash
+VITE_API_URL="http://localhost:8081"
+```
+
+| Variable | Uso | Valor por defecto |
+|----------|-----|-------------------|
+| `VITE_API_URL` | URL base del backend (sin `/api`) | `http://localhost:8081` |
+| `PORT` | Puerto del servidor de desarrollo | `8443` |
+
+El backend debe permitir CORS para el origen del frontend. No subir archivos `.env` al repositorio.
 
 ---
 
@@ -91,13 +108,15 @@ El servidor usa `strictPort`: si el puerto está ocupado, falla en lugar de eleg
 
 ### Cuentas de demostración
 
+Permiten probar la interfaz sin backend. Sus datos (saldo, historial, perfil) se guardan solo en el navegador.
+
 | Rol | Correo | Contraseña |
 |-----|--------|------------|
-| Usuario | `test@example.com` | `Demo1234!` |
-| Usuario | `user@catalyst.com` | `Demo1234!` |
+| Patrocinador | `test@example.com` | `Demo1234!` |
+| Patrocinador | `user@catalyst.com` | `Demo1234!` |
 | Administrador | `admin@catalyst.com` | `Admin1234!` |
 
-También se pueden registrar cuentas nuevas desde `/auth`; se guardan en el navegador.
+Estos correos están reservados: nunca se consultan en el backend. Para usar datos reales, regístrate en `/auth` (contraseña de 8 a 16 caracteres, con 1 mayúscula, 1 número y 1 carácter especial) o inicia sesión con una cuenta existente en el backend.
 
 ---
 
@@ -131,10 +150,13 @@ Si el usuario no ha iniciado sesión, `RequireAuth` lo redirige al inicio de ses
 
 ## Roles
 
-- `user`: usuario normal; puede crear campañas y aportar a las de otros.
+El rol llega desde el backend al iniciar sesión:
+
+- `sponsor`: patrocinador (rol por defecto).
+- `creator`: creador de campañas.
 - `admin`: administrador; puede editar y cambiar el estado de cualquier campaña y ve las métricas de toda la plataforma.
 
-> El backend maneja los roles `sponsor` y `creator`; el mapeo entre ambos esquemas está pendiente de la integración.
+En la interfaz actual cualquier usuario autenticado puede publicar campañas y aportar; el rol se muestra en el panel principal.
 
 ---
 
@@ -165,21 +187,29 @@ Si el usuario no ha iniciado sesión, `RequireAuth` lo redirige al inicio de ses
 
 ## Integración con el Backend
 
-La capa `src/api` ya está preparada:
+La capa `src/api` consume el backend con axios (`baseURL` = `VITE_API_URL` + `/api`):
 
-- `client.ts`: instancia de axios con `baseURL` `http://localhost:8081/api`, que envía el token (`localStorage.token`) como `Authorization: Bearer <token>` y, ante un `401`, borra el token y redirige a `/auth`.
-- `auth.ts`: `POST /auth/register` y `POST /auth/login`.
-- `users.ts`: `GET /users/balance`, `PUT /users/profile` y `POST /users/recharge`.
-- `mappers.ts`: convierte las respuestas del backend a los tipos del frontend.
+| Módulo | Endpoints | Estado |
+|--------|-----------|--------|
+| `auth.ts` | `POST /auth/register`, `POST /auth/login` | Conectado |
+| `users.ts` | `GET /users/balance`, `PUT /users/profile`, `POST /users/recharge` | Conectado |
+| Campañas | `/api/campaigns`, `/api/categories` | Pendiente (simulado) |
+| Aportes | `/api/campaigns/{id}/contributions[/confirm]` | Pendiente (simulado) |
 
-Pendiente para conectar de punta a punta:
+Comportamiento:
 
-- [ ] Declarar `axios` en `package.json` (hoy `src/api` lo importa pero no figura en las dependencias).
-- [ ] Usar `authApi` y `usersApi` desde `Auth`, `Profile`, `Wallet` y `Dashboard` en lugar de `localStorage`.
-- [ ] Mover la URL base a una variable de entorno (por ejemplo `VITE_API_URL`) en vez de dejarla fija.
-- [ ] Conectar campañas, aportes con recompensa y comprobante a los endpoints `/api/campaigns` del backend.
-- [ ] Alinear roles con el backend y agregar la gestión de usuarios (HU-21), que aún no tiene página en el frontend.
-- [ ] Ajustar el mapper al formato de respuesta de `/users/balance` que devuelve el backend (campos en `camelCase`).
+- El token se guarda en `localStorage` y se envía como `Authorization: Bearer <token>`.
+- Ante un `401` fuera de login/registro se cierra la sesión y se redirige a `/auth`.
+- La contraseña que piden el perfil, los aportes y el cierre de campañas se valida contra `POST /auth/login` (en las cuentas de demostración, contra los datos locales).
+- Los errores se muestran con el `message` (o el primer `details`) que devuelve el backend.
+- Mientras los aportes sean simulados, su monto se descuenta del saldo real solo en el navegador; al conectar `/contributions/confirm` el saldo vendrá completo del backend.
+
+Pendiente:
+
+- [ ] Conectar campañas (HU-06 a HU-09) a `/api/campaigns`.
+- [ ] Conectar aportes con recompensa y comprobante (HU-10 a HU-12) a `/contributions/confirm`.
+- [ ] Mostrar las campañas del balance (`campaigns` de `/users/balance`) cuando las campañas sean reales.
+- [ ] Página de gestión de usuarios para administrador (HU-21).
 
 ---
 
@@ -205,7 +235,7 @@ Con npm usar `npm run <script>`.
 
 ## Próximos Pasos / Roadmap
 
-- [ ] Integración completa con el backend (ver sección anterior)
+- [ ] Integración completa con el backend (campañas y aportes)
 - [ ] CRUD de usuarios para administrador (HU-21)
 - [ ] Retiro de fondos (creadores)
 - [ ] Tests unitarios y end-to-end
