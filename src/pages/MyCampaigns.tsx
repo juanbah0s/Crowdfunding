@@ -35,9 +35,9 @@ export function MyCampaigns() {
   const isAdmin = user?.role === "admin";
   const managedCampaigns = isAdmin ? campaigns : campaigns.filter((c) => c.creatorEmail === user?.email);
 
-  const handleStatusChange = (campaign: Campaign, status: CampaignStatus) => {
+  const handleStatusChange = async (campaign: Campaign, status: CampaignStatus) => {
     setClosingId(null);
-    const result = changeCampaignStatus(campaign.id, status);
+    const result = await changeCampaignStatus(campaign.id, status);
     setFeedback(
       result.ok
         ? { campaignId: campaign.id, type: "success", message: STATUS_MESSAGES[status](campaign) }
