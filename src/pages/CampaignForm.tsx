@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router";
 import { AlertCircle, ArrowLeft, ImagePlus, Lock, Plus, Trash2, X, Gift } from "lucide-react";
-import { useUser, CAMPAIGN_CATEGORIES } from "../context/UserContext";
+import { useUser } from "../context/UserContext";
 import type { Campaign } from "../context/UserContext";
 import { formatCurrency } from "../lib/campaignUtils";
 import "./Campaigns.css";
@@ -36,7 +36,7 @@ function readFileAsDataUrl(file: File) {
 
 function CampaignForm({ campaign }: { campaign?: Campaign }) {
   const navigate = useNavigate();
-  const { publishCampaign, updateCampaign } = useUser();
+  const { publishCampaign, updateCampaign, categories } = useUser();
   const isEditing = !!campaign;
   const hasContributions = !!campaign && (campaign.raised > 0 || campaign.contributionsCount > 0);
   const isFundingLocked = isEditing && hasContributions;
@@ -114,7 +114,7 @@ function CampaignForm({ campaign }: { campaign?: Campaign }) {
     return next;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const nextErrors = validate();
     setErrors(nextErrors);
@@ -124,14 +124,14 @@ function CampaignForm({ campaign }: { campaign?: Campaign }) {
         nextErrors.goal && Number(goal) <= 0 && goal.trim() !== ""
           ? "No se puede publicar: la meta de financiación debe ser mayor a cero."
           : missingRequired
-            ? "Completa los campos obligatorios antes de guardar."
+            ? "Completa los campos obligatorios antes de continuar."
             : "Revisa los campos marcados.",
       );
       return;
     }
 
     if (isEditing && campaign) {
-      const result = updateCampaign(campaign.id, {
+      const result = await updateCampaign(campaign.id, {
         title,
         description,
         images,
@@ -145,7 +145,7 @@ function CampaignForm({ campaign }: { campaign?: Campaign }) {
       return;
     }
 
-    const result = publishCampaign({
+    const result = await publishCampaign({
       title,
       description,
       category,
@@ -233,9 +233,9 @@ function CampaignForm({ campaign }: { campaign?: Campaign }) {
               }}
             >
               <option value="">Selecciona una categoría</option>
-              {CAMPAIGN_CATEGORIES.map((c) => (
-                <option key={c} value={c}>
-                  {c}
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
                 </option>
               ))}
             </select>

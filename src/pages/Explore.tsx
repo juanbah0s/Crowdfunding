@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import { Search, SearchX, Users, CalendarClock, ArrowRight, Shield, Globe, Leaf } from "lucide-react";
-import { useUser, CAMPAIGN_CATEGORIES } from "../context/UserContext";
+import { useUser } from "../context/UserContext";
 import type { Campaign } from "../context/UserContext";
 import { formatCurrency, getDaysLeft, getProgress, StatusBadge, CampaignCover } from "../lib/campaignUtils";
 import "./Campaigns.css";
@@ -23,7 +23,7 @@ function sortCampaigns(list: Campaign[], sortBy: SortOption) {
 }
 
 export function Explore() {
-  const { user, campaigns } = useUser();
+  const { user, campaigns, categories } = useUser();
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("all");
   const [sortBy, setSortBy] = useState<SortOption>("popularity");
@@ -125,7 +125,7 @@ export function Explore() {
       </div>
 
       <div className="chip-row">
-        {["all", ...CAMPAIGN_CATEGORIES].map((cat) => (
+        {["all", ...categories.map((c) => c.name)].map((cat) => (
           <button
             key={cat}
             className={`chip${category === cat ? " chip--active" : ""}`}

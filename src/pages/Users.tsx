@@ -88,12 +88,12 @@ function UserFormModal({
   const [attempted, setAttempted] = useState(false);
   useEscape(onClose);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAttempted(true);
     const result = account
-      ? updateAccount(account.id, { name, email, role })
-      : createAccount({ name, email, role, password });
+      ? await updateAccount(account.id, { name, email, role })
+      : await createAccount({ name, email, role, password });
     if (!result.ok) {
       setError(result.error);
       return;
@@ -253,8 +253,8 @@ function RemoveDialog({
   const alreadyArchived = hasHistory && account.status === "inactive";
   useEscape(onClose);
 
-  const handleConfirm = () => {
-    const result = removeAccount(account.id);
+  const handleConfirm = async () => {
+    const result = await removeAccount(account.id);
     if (!result.ok) {
       onDone({ type: "error", message: result.error });
       return;
@@ -372,9 +372,9 @@ export function Users() {
 
   const closeModal = () => setModal(null);
 
-  const toggleStatus = (account: Account) => {
+  const toggleStatus = async (account: Account) => {
     const next: AccountStatus = account.status === "active" ? "inactive" : "active";
-    const result = setAccountStatus(account.id, next);
+    const result = await setAccountStatus(account.id, next);
     setFeedback(
       result.ok
         ? {

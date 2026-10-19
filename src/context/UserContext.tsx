@@ -3,21 +3,24 @@ import { isValidEmail, isValidPassword, normalizeEmail, PASSWORD_ERROR } from ".
 import { authApi } from "../api/auth";
 import { checkPassword, findAccount, renameAccount } from "../lib/accounts";
 import { usersApi } from "../api/users";
+import { categoriesApi } from "../api/categories";
+import { campaignsApi } from "../api/campaigns";
+import { contributionsApi } from "../api/contributions";
+import { adminApi } from "../api/admin";
 import { getApiError, SESSION_KEY, TOKEN_KEY } from "../api/client";
+import {
+  mapCampaign,
+  mapCampaignStatus,
+  mapContributionReceipt,
+  mapTransactionItem,
+  mapAdminUserSummary,
+} from "../api/mappers";
 
 export type UserRole = "creator" | "sponsor" | "admin";
 
 export type CampaignStatus = "active" | "paused" | "closed";
 
-export const CAMPAIGN_CATEGORIES = [
-  "Tecnología",
-  "Agricultura",
-  "Arte y cultura",
-  "Educación",
-  "Medio ambiente",
-  "Comunidad",
-  "Salud",
-] as const;
+export const CAMPAIGN_CATEGORIES: string[] = [];
 
 export interface Transaction {
   id: string;
@@ -27,9 +30,7 @@ export interface Transaction {
   campaignId?: string;
   campaignName?: string;
   rewardTitle?: string;
-  /** Solo en aportes simulados localmente: usuario que los hizo. */
   userId?: string;
-  /** Correo del dueño de la transacción (para el rastro financiero de HU-21). */
   userEmail?: string;
 }
 
@@ -38,14 +39,12 @@ export type TransactionItem = Transaction;
 export type AccountRole = "user" | "admin";
 export type AccountStatus = "active" | "inactive";
 
-/** Cuenta registrada en la plataforma (tabla de usuarios simulada de HU-21). */
 export interface Account {
   id: string;
   name: string;
   email: string;
   role: AccountRole;
   status: AccountStatus;
-  /** Solo en cuentas creadas por un administrador: permiten iniciar sesión localmente. */
   password?: string;
   createdAt: string;
 }
@@ -56,7 +55,6 @@ export interface AccountInput {
   role: AccountRole;
 }
 
-/** Registros financieros que ligan una cuenta al historial de la plataforma. */
 export interface FinancialFootprint {
   recharges: number;
   campaigns: number;
@@ -95,9 +93,7 @@ export interface User {
   name: string;
   email: string;
   role: UserRole;
-  /** Saldo disponible: saldo real del backend menos los aportes simulados localmente. */
   balance: number;
-  /** Total histórico aportado según el backend. */
   historic: number;
 }
 
@@ -163,6 +159,7 @@ interface UserContextType {
   campaigns: Campaign[];
   notifications: Notification[];
   accounts: Account[];
+  categories: { id: string; name: string }[];
   login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
   logout: () => void;
@@ -170,25 +167,24 @@ interface UserContextType {
   recharge: (amount: number) => Promise<void>;
   refreshBalance: () => Promise<void>;
   canManageCampaign: (campaign: Campaign) => boolean;
-  publishCampaign: (draft: CampaignDraft) => ActionResult<Campaign>;
-  updateCampaign: (id: string, changes: CampaignChanges) => ActionResult;
-  changeCampaignStatus: (id: string, status: CampaignStatus) => ActionResult;
+  publishCampaign: (draft: CampaignDraft) => Promise<ActionResult<Campaign>>;
+  updateCampaign: (id: string, changes: CampaignChanges) => Promise<ActionResult>;
+  changeCampaignStatus: (id: string, status: CampaignStatus) => Promise<ActionResult>;
   contribute: (
     campaignId: string,
     amount: number,
     rewardId: string | null,
     options?: { simulateFailure?: boolean },
-  ) => ActionResult<ContributionReceipt>;
+  ) => Promise<ActionResult<ContributionReceipt>>;
   markNotificationsRead: () => void;
   isSelf: (account: Account) => boolean;
   getFinancialFootprint: (email: string) => FinancialFootprint;
-  createAccount: (input: AccountInput & { password: string }) => ActionResult<Account>;
-  updateAccount: (id: string, input: AccountInput) => ActionResult;
-  setAccountStatus: (id: string, status: AccountStatus) => ActionResult;
-  removeAccount: (id: string) => ActionResult<"deleted" | "deactivated">;
+  createAccount: (input: AccountInput & { password: string }) => Promise<ActionResult<Account>>;
+  updateAccount: (id: string, input: AccountInput) => Promise<ActionResult>;
+  setAccountStatus: (id: string, status: AccountStatus) => Promise<ActionResult>;
+  removeAccount: (id: string) => Promise<ActionResult<"deleted" | "deactivated">>;
 }
 
-// Placeholder owner replaced by the logged-in user's email so the demo has campaigns to manage.
 const DEMO_OWNER = "__demo_owner__";
 
 function addDays(days: number) {
@@ -204,7 +200,6 @@ function today() {
 function unsplash(id: string) {
   return `https://images.unsplash.com/${id}?auto=format&fit=crop&w=1200&q=80`;
 }
-
 
 const MOCK_CAMPAIGNS: Campaign[] = [
   {
@@ -315,7 +310,6 @@ const MOCK_CAMPAIGNS: Campaign[] = [
 
 const UserContext = createContext<UserContextType | null>(null);
 
-// Campañas, notificaciones y aportes simulados (todavía sin endpoint en el frontend).
 const STORAGE_KEY = "catalyst-state-v2";
 
 interface PersistedState {
@@ -325,7 +319,6 @@ interface PersistedState {
   localTransactions: Transaction[];
 }
 
-/** Perfil de la sesión + saldo según el backend. El token JWT vive aparte, en localStorage. */
 interface Session {
   id: string;
   name: string;
@@ -333,7 +326,6 @@ interface Session {
   role: UserRole;
   balance: number;
   historic: number;
-  /** Cuenta de demostración: funciona sin backend, con datos locales. */
   demo?: boolean;
 }
 
@@ -358,7 +350,6 @@ function loadSession(): Session | null {
     const raw = localStorage.getItem(SESSION_KEY);
     if (!raw) return null;
     const stored = JSON.parse(raw) as Session;
-    // Sin token no hay sesión válida (salvo en cuentas de demostración, que no usan backend).
     if (!stored.demo && !localStorage.getItem(TOKEN_KEY)) return null;
     return stored;
   } catch {
@@ -369,7 +360,6 @@ function loadSession(): Session | null {
 const initialState = loadState();
 const initialSession = loadSession();
 
-// Historial inicial de las cuentas de demostración: 500.000 recargados y 150.000 aportados => saldo de 350.000.
 const DEMO_BASE_BALANCE = 500000;
 const DEMO_TRANSACTIONS: Omit<Transaction, "userId">[] = [
   { id: "T001", date: "2026-09-01", type: "recharge", amount: 500000 },
@@ -377,8 +367,6 @@ const DEMO_TRANSACTIONS: Omit<Transaction, "userId">[] = [
   { id: "T003", date: "2026-09-10", type: "contribution", amount: 50000, campaignId: "2", campaignName: "AgroSmart Colombia" },
 ];
 
-// Tabla de usuarios simulada (HU-21). Solo las tres cuentas de demostración pueden iniciar sesión;
-// el resto son registros para probar el listado, los filtros y la baja con historial.
 const SEED_ACCOUNTS: Omit<Account, "id" | "createdAt">[] = [
   { name: "Administrador", email: "admin@catalyst.com", role: "admin", status: "active" },
   { name: "Usuario Demo", email: "test@example.com", role: "user", status: "active" },
@@ -403,7 +391,6 @@ function seedAccounts(): Account[] {
   return SEED_ACCOUNTS.map((a, i) => ({ ...a, id: `U${String(i + 1).padStart(3, "0")}`, createdAt: addDays(-90 + i * 4) }));
 }
 
-// Recargas de cuentas semilla: permiten probar la baja de usuarios con historial financiero.
 const SEED_FOOTPRINT_TX: Transaction[] = [
   { id: "T004", date: "2026-08-22", type: "recharge", amount: 200000, userEmail: "marcos@mail.com" },
   { id: "T005", date: "2026-08-28", type: "recharge", amount: 150000, userEmail: "valentina@mail.com" },
@@ -415,6 +402,14 @@ function createId(prefix: string) {
   return `${prefix}${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
 }
 
+function toBackendStatus(status: CampaignStatus): "ACTIVE" | "PAUSED" | "CLOSED" {
+  switch (status) {
+    case "active": return "ACTIVE";
+    case "paused": return "PAUSED";
+    case "closed": return "CLOSED";
+  }
+}
+
 export function UserProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(initialSession);
   const [serverTransactions, setServerTransactions] = useState<Transaction[]>([]);
@@ -422,13 +417,13 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const [accounts, setAccounts] = useState<Account[]>(() => initialState?.accounts ?? seedAccounts());
   const [campaigns, setCampaigns] = useState<Campaign[]>(initialState?.campaigns ?? MOCK_CAMPAIGNS);
   const [notifications, setNotifications] = useState<Notification[]>(initialState?.notifications ?? []);
+  const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
 
-  // Mantiene la base de datos simulada (campañas, notificaciones, aportes locales) entre recargas.
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({ accounts, campaigns, notifications, localTransactions }));
     } catch {
-      // Storage quota exceeded (e.g. large uploaded images); keep working in memory.
+      // ignore
     }
   }, [accounts, campaigns, notifications, localTransactions]);
 
@@ -441,8 +436,6 @@ export function UserProvider({ children }: { children: ReactNode }) {
     }
   }, [session]);
 
-  // Los aportes a campañas aún son simulados: se descuentan del saldo real para que
-  // el saldo mostrado sea coherente tras recargar la página.
   const localSpent = useMemo(
     () =>
       session
@@ -473,16 +466,49 @@ export function UserProvider({ children }: { children: ReactNode }) {
     try {
       const detail = await usersApi.getBalance();
       setSession((prev) => (prev ? { ...prev, balance: detail.balance, historic: detail.historic } : prev));
-      setServerTransactions(detail.history);
+      setServerTransactions(detail.history.map((h) => mapTransactionItem(h, session?.email)));
     } catch (err) {
       console.error("Error refreshing balance:", err);
     }
   }, []);
 
-  // Al abrir la app con una sesión guardada, sincroniza saldo e historial con el backend.
   useEffect(() => {
     if (initialSession && !initialSession.demo) void refreshBalance();
   }, [refreshBalance]);
+
+  const loadCategories = useCallback(async () => {
+    try {
+      const list = await categoriesApi.list();
+      setCategories(list);
+    } catch {
+      setCategories([]);
+    }
+  }, []);
+
+  const loadCampaigns = useCallback(async () => {
+    try {
+      const [publicCampaigns, managedCampaigns] = await Promise.all([
+        campaignsApi.list(),
+        campaignsApi.listManaged(),
+      ]);
+      const campaignsById = new Map(
+        publicCampaigns.map((campaign) => [campaign.id, mapCampaign(campaign)]),
+      );
+      managedCampaigns.forEach((campaign) => {
+        campaignsById.set(campaign.id, mapCampaign(campaign));
+      });
+      setCampaigns([...campaignsById.values()]);
+    } catch {
+      setCampaigns(MOCK_CAMPAIGNS);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (session && !session.demo) {
+      void loadCategories();
+      void loadCampaigns();
+    }
+  }, [session, loadCategories, loadCampaigns]);
 
   const remapDemoOwner = (name: string, email: string) =>
     setCampaigns((prev) =>
@@ -494,9 +520,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
       })),
     );
 
-  /** Inicia una sesión local (sin backend): cuentas de demostración y cuentas creadas por un administrador. */
   const startLocalSession = (info: { id: string; name: string; email: string; role: UserRole }) => {
-    authApi.logout(); // descarta cualquier token de una sesión real anterior
+    authApi.logout();
     setSession({ ...info, balance: DEMO_BASE_BALANCE, historic: 0, demo: true });
     setServerTransactions([]);
     setLocalTransactions((prev) =>
@@ -533,7 +558,6 @@ export function UserProvider({ children }: { children: ReactNode }) {
     if (registered?.status === "inactive") {
       throw { response: { data: { message: "Tu cuenta está inactiva. Contacta a un administrador para recuperar el acceso." } } };
     }
-    // Cuentas de demostración: funcionan sin backend. Su rol sale de la tabla de usuarios.
     const demo = findAccount(email);
     if (demo) {
       if (!checkPassword(email, password)) throw invalidCredentials();
@@ -545,7 +569,6 @@ export function UserProvider({ children }: { children: ReactNode }) {
       });
       return;
     }
-    // Cuentas creadas por un administrador desde el módulo de usuarios (locales).
     if (registered?.password !== undefined) {
       if (registered.password !== password) throw invalidCredentials();
       startLocalSession({
@@ -561,6 +584,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
     upsertAccount(u);
     remapDemoOwner(u.name, u.email);
     await refreshBalance();
+    void loadCategories();
+    void loadCampaigns();
   };
 
   const register = async (name: string, email: string, password: string) => {
@@ -575,9 +600,10 @@ export function UserProvider({ children }: { children: ReactNode }) {
     authApi.logout();
     setSession(null);
     setServerTransactions([]);
+    setCampaigns(MOCK_CAMPAIGNS);
+    setCategories([]);
   };
 
-  // Propaga un cambio de nombre/correo a todos los registros que referencian la cuenta.
   const renameIdentity = (previousEmail: string, name: string, email: string) => {
     setCampaigns((prev) =>
       prev.map((c) => ({
@@ -638,19 +664,16 @@ export function UserProvider({ children }: { children: ReactNode }) {
       return;
     }
     const res = await usersApi.recharge(amount);
-    const newBalance = Number(res.balance ?? res.newBalance);
+    const newBalance = Number(res.newBalance);
     if (Number.isFinite(newBalance)) {
       setSession((prev) => (prev ? { ...prev, balance: newBalance } : prev));
     }
     await refreshBalance();
   };
 
-  // --- Administración de usuarios (solo administradores) ------------------------
-
   const isSelf = (account: Account) => !!session && normalizeEmail(session.email) === account.email;
 
   const getFinancialFootprint = (email: string): FinancialFootprint => {
-    // Para la sesión con backend se suman también sus recargas y aportes reales.
     const own = session && !session.demo && normalizeEmail(session.email) === normalizeEmail(email);
     const records: Transaction[] = [
       ...SEED_FOOTPRINT_TX,
@@ -680,26 +703,30 @@ export function UserProvider({ children }: { children: ReactNode }) {
     return null;
   };
 
-  const createAccount: UserContextType["createAccount"] = (input) => {
+  const createAccount = async (input: AccountInput & { password: string }): Promise<ActionResult<Account>> => {
     const denied = adminGuard();
     if (denied) return denied;
     const error = validateAccountInput(input);
     if (error) return { ok: false, error };
     if (!isValidPassword(input.password)) return { ok: false, error: PASSWORD_ERROR };
-    const account: Account = {
-      id: createId("U"),
-      name: input.name.trim(),
-      email: normalizeEmail(input.email),
-      role: input.role,
-      status: "active",
-      password: input.password,
-      createdAt: today(),
-    };
-    setAccounts((prev) => [account, ...prev]);
-    return { ok: true, data: account };
+    try {
+      const backendRole: "sponsor" | "creator" =
+        input.role === "admin" ? "creator" : input.role === "user" ? "sponsor" : input.role;
+      const created = await adminApi.createUser({
+        name: input.name.trim(),
+        email: input.email.trim(),
+        password: input.password,
+        role: backendRole,
+      });
+      const account = mapAdminUserSummary(created);
+      setAccounts((prev) => [account, ...prev]);
+      return { ok: true, data: account };
+    } catch (err) {
+      return { ok: false, error: getApiError(err, "No se pudo crear el usuario.") };
+    }
   };
 
-  const updateAccount: UserContextType["updateAccount"] = (id, input) => {
+  const updateAccount = async (id: string, input: AccountInput): Promise<ActionResult> => {
     const denied = adminGuard();
     if (denied) return denied;
     const account = accounts.find((a) => a.id === id);
@@ -713,17 +740,27 @@ export function UserProvider({ children }: { children: ReactNode }) {
     const name = input.name.trim();
     const email = normalizeEmail(input.email);
     if (self && session && !session.demo && (name !== account.name || email !== account.email)) {
-      // La cuenta real vive en el backend: sus datos se editan desde el perfil.
       return { ok: false, error: "Para cambiar tu nombre o correo usa la página de Perfil." };
     }
-    if (findAccount(account.email)) renameAccount(account.email, name, email);
-    setAccounts((prev) => prev.map((a) => (a.id === id ? { ...a, name, email, role: input.role } : a)));
-    renameIdentity(account.email, name, email);
-    if (self) setSession((prev) => (prev ? { ...prev, name, email } : prev));
-    return { ok: true, data: undefined };
+    try {
+      const backendRole: "sponsor" | "creator" =
+        input.role === "admin" ? "creator" : input.role === "user" ? "sponsor" : input.role;
+      const updated = await adminApi.updateUser(id, {
+        name,
+        email,
+        role: backendRole,
+      });
+      const accountUpdated = mapAdminUserSummary(updated);
+      setAccounts((prev) => prev.map((a) => (a.id === id ? accountUpdated : a)));
+      renameIdentity(account.email, name, email);
+      if (self) setSession((prev) => (prev ? { ...prev, name, email } : prev));
+      return { ok: true, data: undefined };
+    } catch (err) {
+      return { ok: false, error: getApiError(err, "No se pudo actualizar el usuario.") };
+    }
   };
 
-  const setAccountStatus: UserContextType["setAccountStatus"] = (id, status) => {
+  const setAccountStatus = async (id: string, status: AccountStatus): Promise<ActionResult> => {
     const denied = adminGuard();
     if (denied) return denied;
     const account = accounts.find((a) => a.id === id);
@@ -731,55 +768,93 @@ export function UserProvider({ children }: { children: ReactNode }) {
     if (status === "inactive" && isSelf(account)) {
       return { ok: false, error: "No puedes deshabilitar tu propia cuenta mientras está activa." };
     }
-    setAccounts((prev) => prev.map((a) => (a.id === id ? { ...a, status } : a)));
-    return { ok: true, data: undefined };
+    try {
+      await adminApi.changeUserStatus(id, status === "active" ? "ENABLE" : "DISABLE");
+      setAccounts((prev) => prev.map((a) => (a.id === id ? { ...a, status } : a)));
+      return { ok: true, data: undefined };
+    } catch (err) {
+      return { ok: false, error: getApiError(err, "No se pudo cambiar el estado del usuario.") };
+    }
   };
 
-  const removeAccount: UserContextType["removeAccount"] = (id) => {
+  const removeAccount = async (id: string): Promise<ActionResult<"deleted" | "deactivated">> => {
     const denied = adminGuard();
     if (denied) return denied;
     const account = accounts.find((a) => a.id === id);
     if (!account) return { ok: false, error: "El usuario no existe." };
     if (isSelf(account)) return { ok: false, error: "No puedes eliminar tu propia cuenta mientras está activa." };
     if (getFinancialFootprint(account.email).total > 0) {
-      // Se conserva la cuenta y su historial para garantizar la trazabilidad; solo se revoca el acceso.
+      await adminApi.changeUserStatus(id, "DISABLE");
       setAccounts((prev) => prev.map((a) => (a.id === id ? { ...a, status: "inactive" } : a)));
       return { ok: true, data: "deactivated" };
     }
-    setAccounts((prev) => prev.filter((a) => a.id !== id));
-    return { ok: true, data: "deleted" };
+    try {
+      await adminApi.changeUserStatus(id, "DISABLE");
+      setAccounts((prev) => prev.filter((a) => a.id !== id));
+      return { ok: true, data: "deleted" };
+    } catch (err) {
+      return { ok: false, error: getApiError(err, "No se pudo eliminar el usuario.") };
+    }
   };
 
   const canManageCampaign = (campaign: Campaign) =>
     !!user && (user.role === "admin" || campaign.creatorEmail === user.email);
 
-  const publishCampaign = (draft: CampaignDraft): ActionResult<Campaign> => {
+  const publishCampaign = async (draft: CampaignDraft): Promise<ActionResult<Campaign>> => {
     if (!user) return { ok: false, error: "Debes iniciar sesión para publicar." };
     if (!(draft.goal > 0)) {
       return { ok: false, error: "La meta de financiación debe ser mayor a cero." };
     }
-    const campaign: Campaign = {
-      id: createId("C"),
-      title: draft.title.trim(),
-      description: draft.description.trim(),
-      category: draft.category,
-      goal: draft.goal,
-      raised: 0,
-      deadline: draft.deadline,
-      images: draft.images,
-      status: "active",
-      creatorName: user.name,
-      creatorEmail: user.email,
-      rewards: draft.rewards.map((r, i) => ({ ...r, id: `r${i + 1}` })),
-      backerEmails: [],
-      contributionsCount: 0,
-      createdAt: today(),
-    };
-    setCampaigns((prev) => [campaign, ...prev]);
-    return { ok: true, data: campaign };
+
+    // Si no hay categorías cargadas, intentarlas obtener primero
+    if (categories.length === 0) {
+      try {
+        const list = await categoriesApi.list();
+        setCategories(list);
+      } catch {
+        setCategories([]);
+      }
+    }
+
+    // Siempre usar una categoría válida: la seleccionada o la primera disponible
+    const selectedCategoryId = draft.category;
+    const categoryId = selectedCategoryId && categories.some((c) => c.id === selectedCategoryId)
+      ? selectedCategoryId
+      : categories.length > 0
+        ? categories[0].id
+        : null;
+
+    if (!categoryId) {
+      return { ok: false, error: "No hay categorías disponibles en el sistema." };
+    }
+    try {
+      const created = await campaignsApi.publish({
+        title: draft.title.trim(),
+        description: draft.description.trim(),
+        goal: draft.goal,
+        deadline: `${draft.deadline}T00:00:00Z`,
+        categoryId,
+        images: draft.images,
+        rewards: draft.rewards.map((r) => ({
+          name: r.title.trim(),
+          description: r.description.trim(),
+          minAmount: r.minAmount,
+          stock: r.stock,
+        })),
+      });
+      const campaign = mapCampaign(created);
+      setCampaigns((prev) => [campaign, ...prev]);
+      return { ok: true, data: campaign };
+    } catch (err: any) {
+      const backendMsg = err.response?.data?.message || err.response?.data?.details;
+      console.error("Publicar campaña error completo:", err);
+      console.error("Backend response:", err.response?.data);
+      const errorMsg = backendMsg || getApiError(err, "No se pudo publicar la campaña.");
+      return { ok: false, error: errorMsg };
+    }
   };
 
-  const updateCampaign = (id: string, changes: CampaignChanges): ActionResult => {
+  const updateCampaign = async (id: string, changes: CampaignChanges): Promise<ActionResult> => {
     const campaign = campaigns.find((c) => c.id === id);
     if (!campaign) return { ok: false, error: "La campaña no existe." };
     if (!canManageCampaign(campaign)) {
@@ -803,24 +878,38 @@ export function UserProvider({ children }: { children: ReactNode }) {
     if (changes.goal !== undefined && !(changes.goal > 0)) {
       return { ok: false, error: "La meta de financiación debe ser mayor a cero." };
     }
-    setCampaigns((prev) =>
-      prev.map((c) =>
-        c.id === id
-          ? {
-              ...c,
-              title: changes.title.trim(),
-              description: changes.description.trim(),
-              images: changes.images,
-              goal: hasContributions ? c.goal : (changes.goal ?? c.goal),
-              deadline: hasContributions ? c.deadline : (changes.deadline ?? c.deadline),
-            }
-          : c,
-      ),
-    );
-    return { ok: true, data: undefined };
+    try {
+      const body: any = {
+        title: changes.title.trim(),
+        description: changes.description.trim(),
+        images: changes.images,
+      };
+      if (!hasContributions) {
+        if (changes.goal !== undefined) body.goal = changes.goal;
+        if (changes.deadline !== undefined) body.deadline = `${changes.deadline}T00:00:00Z`;
+      }
+      await campaignsApi.update(id, body);
+      setCampaigns((prev) =>
+        prev.map((c) =>
+          c.id === id
+            ? {
+                ...c,
+                title: changes.title.trim(),
+                description: changes.description.trim(),
+                images: changes.images,
+                goal: hasContributions ? c.goal : (changes.goal ?? c.goal),
+                deadline: hasContributions ? c.deadline : (changes.deadline ?? c.deadline),
+              }
+            : c,
+        ),
+      );
+      return { ok: true, data: undefined };
+    } catch (err) {
+      return { ok: false, error: getApiError(err, "No se pudo actualizar la campaña.") };
+    }
   };
 
-  const changeCampaignStatus = (id: string, status: CampaignStatus): ActionResult => {
+  const changeCampaignStatus = async (id: string, status: CampaignStatus): Promise<ActionResult> => {
     const campaign = campaigns.find((c) => c.id === id);
     if (!campaign) return { ok: false, error: "La campaña no existe." };
     if (!canManageCampaign(campaign)) {
@@ -832,27 +921,36 @@ export function UserProvider({ children }: { children: ReactNode }) {
     if (campaign.status === "closed") {
       return { ok: false, error: "La campaña está cerrada de forma permanente." };
     }
-    setCampaigns((prev) => prev.map((c) => (c.id === id ? { ...c, status } : c)));
-
-    if (status === "closed") {
-      const sentAt = new Date().toISOString();
-      setNotifications((prev) => [
-        ...campaign.backerEmails.map((email) => ({
-          id: createId("N"),
-          recipientEmail: email,
-          channel: "email" as const,
-          subject: `La campaña "${campaign.title}" ha sido cerrada`,
-          body: `El creador cerró la campaña "${campaign.title}". Ya no recibirá nuevos aportes. Recaudo final: ${campaign.raised.toLocaleString("es-CO")} COP de una meta de ${campaign.goal.toLocaleString("es-CO")} COP.`,
-          date: sentAt,
-          read: false,
-        })),
-        ...prev,
-      ]);
+    try {
+      await campaignsApi.updateStatus(id, toBackendStatus(status));
+      setCampaigns((prev) => prev.map((c) => (c.id === id ? { ...c, status } : c)));
+      if (status === "closed") {
+        const sentAt = new Date().toISOString();
+        setNotifications((prev) => [
+          ...campaign.backerEmails.map((email) => ({
+            id: createId("N"),
+            recipientEmail: email,
+            channel: "email" as const,
+            subject: `La campaña "${campaign.title}" ha sido cerrada`,
+            body: `El creador cerró la campaña "${campaign.title}". Ya no recibirá nuevos aportes. Recaudo final: ${campaign.raised.toLocaleString("es-CO")} COP de una meta de ${campaign.goal.toLocaleString("es-CO")} COP.`,
+            date: sentAt,
+            read: false,
+          })),
+          ...prev,
+        ]);
+      }
+      return { ok: true, data: undefined };
+    } catch (err) {
+      return { ok: false, error: getApiError(err, "No se pudo cambiar el estado de la campaña.") };
     }
-    return { ok: true, data: undefined };
   };
 
-  const contribute: UserContextType["contribute"] = (campaignId, amount, rewardId, options) => {
+  const contribute = async (
+    campaignId: string,
+    amount: number,
+    rewardId: string | null,
+    options?: { simulateFailure?: boolean },
+  ): Promise<ActionResult<ContributionReceipt>> => {
     if (!user) return { ok: false, error: "Debes iniciar sesión para aportar." };
     const campaign = campaigns.find((c) => c.id === campaignId);
     if (!campaign) return { ok: false, error: "La campaña no existe." };
@@ -870,72 +968,63 @@ export function UserProvider({ children }: { children: ReactNode }) {
       return { ok: false, error: "El monto no alcanza el mínimo requerido para la recompensa." };
     }
     if (options?.simulateFailure) {
-      // Nothing has been mutated yet, so the balance stays intact.
       return {
         ok: false,
         error: "No pudimos procesar el pago (error de la pasarela). La operación fue cancelada y no se descontó saldo.",
       };
     }
-
-    const transactionId = createId("TX-");
-    const date = today();
-    const remainingBalance = user.balance - amount;
-
-    setCampaigns((prev) =>
-      prev.map((c) =>
-        c.id === campaignId
-          ? {
-              ...c,
-              raised: c.raised + amount,
-              contributionsCount: c.contributionsCount + 1,
-              backerEmails: c.backerEmails.includes(user.email) ? c.backerEmails : [...c.backerEmails, user.email],
-              rewards: c.rewards.map((r) => (r.id === rewardId ? { ...r, stock: r.stock - 1 } : r)),
-            }
-          : c,
-      ),
-    );
-    setLocalTransactions((prev) => [
-      {
-        id: transactionId,
-        date,
-        type: "contribution",
+    try {
+      const receipt = await contributionsApi.confirm(campaignId, {
         amount,
-        campaignId,
-        campaignName: campaign.title,
-        rewardTitle: reward?.title,
-        userId: user.id,
-        userEmail: user.email,
-      },
-      ...prev,
-    ]);
-    setNotifications((prev) => [
-      {
-        id: createId("N"),
-        recipientEmail: user.email,
-        channel: "email",
-        subject: `Comprobante de tu aporte a "${campaign.title}"`,
-        body: `Transacción ${transactionId}. Aportaste ${amount.toLocaleString("es-CO")} COP${
-          reward ? ` con la recompensa "${reward.title}"` : " sin recompensa"
-        }. Saldo restante: ${remainingBalance.toLocaleString("es-CO")} COP.`,
-        date: new Date().toISOString(),
-        read: false,
-      },
-      ...prev,
-    ]);
-
-    return {
-      ok: true,
-      data: {
-        transactionId,
-        campaignId,
-        campaignTitle: campaign.title,
-        amount,
-        rewardTitle: reward?.title ?? null,
-        remainingBalance,
-        date,
-        email: user.email,
-      },
-    };
+        rewardId: rewardId ?? undefined,
+      });
+      const mapped = mapContributionReceipt(receipt, user.email);
+      setCampaigns((prev) =>
+        prev.map((c) =>
+          c.id === campaignId
+            ? {
+                ...c,
+                raised: c.raised + amount,
+                contributionsCount: c.contributionsCount + 1,
+                backerEmails: c.backerEmails.includes(user.email) ? c.backerEmails : [...c.backerEmails, user.email],
+                rewards: c.rewards.map((r) => (r.id === rewardId ? { ...r, stock: r.stock - 1 } : r)),
+              }
+            : c,
+        ),
+      );
+      setLocalTransactions((prev) => [
+        {
+          id: mapped.transactionId,
+          date: mapped.date,
+          type: "contribution",
+          amount,
+          campaignId,
+          campaignName: campaign.title,
+          rewardTitle: reward?.title,
+          userId: user.id,
+          userEmail: user.email,
+        },
+        ...prev,
+      ]);
+      setNotifications((prev) => [
+        {
+          id: createId("N"),
+          recipientEmail: user.email,
+          channel: "email",
+          subject: `Comprobante de tu aporte a "${campaign.title}"`,
+          body: `Transacción ${mapped.transactionId}. Aportaste ${amount.toLocaleString("es-CO")} COP${
+            reward ? ` con la recompensa "${reward.title}"` : " sin recompensa"
+          }. Saldo restante: ${mapped.remainingBalance.toLocaleString("es-CO")} COP.`,
+          date: new Date().toISOString(),
+          read: false,
+        },
+        ...prev,
+      ]);
+      await refreshBalance();
+      return { ok: true, data: mapped };
+    } catch (err) {
+      return { ok: false, error: getApiError(err, "No se pudo procesar el aporte.") };
+    }
   };
 
   const markNotificationsRead = () => {
@@ -951,6 +1040,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
         campaigns,
         notifications,
         accounts,
+        categories,
         login,
         register,
         logout,
