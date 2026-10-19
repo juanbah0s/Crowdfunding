@@ -553,6 +553,15 @@ export function UserProvider({ children }: { children: ReactNode }) {
     );
   };
 
+  const startBackendSession = async (u: User) => {
+    setSession({ id: u.id, name: u.name, email: u.email, role: u.role, balance: u.balance, historic: u.historic });
+    upsertAccount(u);
+    remapDemoOwner(u.name, u.email);
+    await refreshBalance();
+    void loadCategories();
+    void loadCampaigns();
+  };
+
   const login = async (email: string, password: string) => {
     const registered = accounts.find((a) => a.email === normalizeEmail(email));
     if (registered?.status === "inactive") {
@@ -580,20 +589,16 @@ export function UserProvider({ children }: { children: ReactNode }) {
       return;
     }
     const u = await authApi.login({ email, password });
-    setSession({ id: u.id, name: u.name, email: u.email, role: u.role, balance: u.balance, historic: u.historic });
-    upsertAccount(u);
-    remapDemoOwner(u.name, u.email);
-    await refreshBalance();
-    void loadCategories();
-    void loadCampaigns();
+    await startBackendSession(u);
   };
 
   const register = async (name: string, email: string, password: string) => {
-    if (accounts.some((a) => a.email === normalizeEmail(email))) {
+    if (findAccount(normalizeEmail(email))) {
       throw { response: { data: { message: "Este correo ya está registrado." } } };
     }
     await authApi.register({ name, email, password });
-    await login(email, password);
+    const u = await authApi.login({ email, password });
+    await startBackendSession(u);
   };
 
   const logout = () => {
