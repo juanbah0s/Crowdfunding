@@ -125,7 +125,7 @@ export function mapAdminUserSummary(b: any): Account {
     id: b.id,
     name: b.name,
     email: b.email,
-    role: b.role === "admin" ? ("admin" as const) : ("user" as const),
+    role: b.role === "admin" || b.role === "creator" ? b.role : ("sponsor" as const),
     status: b.status === "ACTIVE" ? ("active" as const) : ("inactive" as const),
     createdAt: String(b.createdAt).slice(0, 10),
   };

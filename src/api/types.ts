@@ -126,8 +126,13 @@ export interface AdminUserDetailResponse {
   transactionsCount: number;
 }
 
+// `users` es un Page de Spring: según la versión trae `totalPages` arriba o dentro de `page`.
 export interface AdminUserListResponse {
-  users: AdminUserSummary[];
+  users: {
+    content: AdminUserSummary[];
+    totalPages?: number;
+    page?: { totalPages: number };
+  };
 }
 
 export interface AdminCreateUserRequest {

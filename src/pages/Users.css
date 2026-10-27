@@ -147,7 +147,8 @@
   letter-spacing: 0.02em;
 }
 
-.user-avatar--user {
+.user-avatar--sponsor,
+.user-avatar--creator {
   background: #f4f4f5;
   color: #52525b;
 }
@@ -182,9 +183,14 @@
   white-space: nowrap;
 }
 
-.role-badge--user {
+.role-badge--sponsor {
   background: #f4f4f5;
   color: #52525b;
+}
+
+.role-badge--creator {
+  background: #eff6ff;
+  color: #1d4ed8;
 }
 
 .role-badge--admin {
