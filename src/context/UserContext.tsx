@@ -36,7 +36,8 @@ export interface Transaction {
 
 export type TransactionItem = Transaction;
 
-export type AccountRole = "user" | "admin";
+// Mismos roles del backend: el admin solo puede asignar sponsor o creator.
+export type AccountRole = UserRole;
 export type AccountStatus = "active" | "inactive";
 
 export interface Account {
@@ -335,7 +336,8 @@ function loadState(): PersistedState | null {
     if (!raw) return null;
     const state = JSON.parse(raw) as Partial<PersistedState>;
     return {
-      accounts: state.accounts,
+      // Versiones anteriores guardaban el rol "user"; equivale a patrocinador.
+      accounts: state.accounts?.map((a) => ((a.role as string) === "user" ? { ...a, role: "sponsor" } : a)),
       campaigns: state.campaigns ?? MOCK_CAMPAIGNS,
       notifications: state.notifications ?? [],
       localTransactions: state.localTransactions ?? [],
@@ -369,22 +371,22 @@ const DEMO_TRANSACTIONS: Omit<Transaction, "userId">[] = [
 
 const SEED_ACCOUNTS: Omit<Account, "id" | "createdAt">[] = [
   { name: "Administrador", email: "admin@catalyst.com", role: "admin", status: "active" },
-  { name: "Usuario Demo", email: "test@example.com", role: "user", status: "active" },
-  { name: "Catalyst User", email: "user@catalyst.com", role: "user", status: "active" },
+  { name: "Usuario Demo", email: "test@example.com", role: "sponsor", status: "active" },
+  { name: "Catalyst User", email: "user@catalyst.com", role: "sponsor", status: "active" },
   { name: "Mariana Soto", email: "soporte@catalyst.com", role: "admin", status: "active" },
-  { name: "Laura Méndez", email: "laura@ecotech.co", role: "user", status: "active" },
-  { name: "Andrés Rojas", email: "andres@agrosmart.co", role: "user", status: "active" },
-  { name: "Colectivo Raíz", email: "hola@raiz.org", role: "user", status: "active" },
-  { name: "Marcos Peña", email: "marcos@mail.com", role: "user", status: "active" },
-  { name: "Sofía Cárdenas", email: "sofia@mail.com", role: "user", status: "active" },
-  { name: "Carla Ruiz", email: "carla@mail.com", role: "user", status: "active" },
-  { name: "Pedro Gómez", email: "pedro@mail.com", role: "user", status: "active" },
-  { name: "Lucía Torres", email: "lucia@mail.com", role: "user", status: "active" },
-  { name: "Ana Morales", email: "ana@mail.com", role: "user", status: "inactive" },
-  { name: "Jorge Díaz", email: "jorge@mail.com", role: "user", status: "active" },
-  { name: "Valentina Ríos", email: "valentina@mail.com", role: "user", status: "active" },
-  { name: "Diego Herrera", email: "diego@mail.com", role: "user", status: "active" },
-  { name: "Camila Ortiz", email: "camila@mail.com", role: "user", status: "inactive" },
+  { name: "Laura Méndez", email: "laura@ecotech.co", role: "sponsor", status: "active" },
+  { name: "Andrés Rojas", email: "andres@agrosmart.co", role: "sponsor", status: "active" },
+  { name: "Colectivo Raíz", email: "hola@raiz.org", role: "sponsor", status: "active" },
+  { name: "Marcos Peña", email: "marcos@mail.com", role: "sponsor", status: "active" },
+  { name: "Sofía Cárdenas", email: "sofia@mail.com", role: "sponsor", status: "active" },
+  { name: "Carla Ruiz", email: "carla@mail.com", role: "sponsor", status: "active" },
+  { name: "Pedro Gómez", email: "pedro@mail.com", role: "sponsor", status: "active" },
+  { name: "Lucía Torres", email: "lucia@mail.com", role: "sponsor", status: "active" },
+  { name: "Ana Morales", email: "ana@mail.com", role: "sponsor", status: "inactive" },
+  { name: "Jorge Díaz", email: "jorge@mail.com", role: "sponsor", status: "active" },
+  { name: "Valentina Ríos", email: "valentina@mail.com", role: "sponsor", status: "active" },
+  { name: "Diego Herrera", email: "diego@mail.com", role: "sponsor", status: "active" },
+  { name: "Camila Ortiz", email: "camila@mail.com", role: "sponsor", status: "inactive" },
 ];
 
 function seedAccounts(): Account[] {
@@ -396,7 +398,7 @@ const SEED_FOOTPRINT_TX: Transaction[] = [
   { id: "T005", date: "2026-08-28", type: "recharge", amount: 150000, userEmail: "valentina@mail.com" },
 ];
 
-const sessionRoleFor = (role: AccountRole): UserRole => (role === "admin" ? "admin" : "sponsor");
+const sessionRoleFor = (role: AccountRole): UserRole => role;
 
 function createId(prefix: string) {
   return `${prefix}${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
@@ -503,12 +505,34 @@ export function UserProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // El módulo de usuarios trabaja con las cuentas reales del backend (ids UUID), no con las de ejemplo.
+  const loadAccounts = useCallback(async () => {
+    try {
+      const loaded: Account[] = [];
+      let totalPages = 1;
+      for (let page = 0; page < totalPages; page++) {
+        const { users } = await adminApi.listUsers({ page, size: 100 });
+        loaded.push(...users.content.map(mapAdminUserSummary));
+        totalPages = users.totalPages ?? users.page?.totalPages ?? 1;
+      }
+      setAccounts(loaded);
+    } catch (err) {
+      console.error("Error loading users:", err);
+    }
+  }, []);
+
+  const isBackendAdmin = !!session && !session.demo && session.role === "admin";
+
   useEffect(() => {
     if (session && !session.demo) {
       void loadCategories();
       void loadCampaigns();
     }
   }, [session, loadCategories, loadCampaigns]);
+
+  useEffect(() => {
+    if (isBackendAdmin) void loadAccounts();
+  }, [isBackendAdmin, loadAccounts]);
 
   const remapDemoOwner = (name: string, email: string) =>
     setCampaigns((prev) =>
@@ -545,7 +569,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
               id: createId("U"),
               name: u.name,
               email,
-              role: u.role === "admin" ? "admin" : "user",
+              role: u.role,
               status: "active",
               createdAt: today(),
             },
@@ -715,8 +739,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     if (error) return { ok: false, error };
     if (!isValidPassword(input.password)) return { ok: false, error: PASSWORD_ERROR };
     try {
-      const backendRole: "sponsor" | "creator" =
-        input.role === "admin" ? "creator" : input.role === "user" ? "sponsor" : input.role;
+      const backendRole: "sponsor" | "creator" = input.role === "creator" ? "creator" : "sponsor";
       const created = await adminApi.createUser({
         name: input.name.trim(),
         email: input.email.trim(),
@@ -748,8 +771,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
       return { ok: false, error: "Para cambiar tu nombre o correo usa la página de Perfil." };
     }
     try {
-      const backendRole: "sponsor" | "creator" =
-        input.role === "admin" ? "creator" : input.role === "user" ? "sponsor" : input.role;
+      // El backend no asigna el rol admin: a un administrador no se le envía rol para que lo conserve.
+      const backendRole: "sponsor" | "creator" | undefined =
+        account.role === "admin" ? undefined : input.role === "creator" ? "creator" : "sponsor";
       const updated = await adminApi.updateUser(id, {
         name,
         email,

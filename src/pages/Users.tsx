@@ -25,7 +25,9 @@ import "./Users.css";
 
 const PAGE_SIZE = 8;
 
-const ROLE_LABELS: Record<AccountRole, string> = { user: "Usuario Normal", admin: "Administrador" };
+const ROLE_LABELS: Record<AccountRole, string> = { sponsor: "Patrocinador", creator: "Creador", admin: "Administrador" };
+// El rol admin no se asigna desde este módulo (el backend solo acepta sponsor o creator).
+const ASSIGNABLE_ROLES: AccountRole[] = ["sponsor", "creator"];
 const STATUS_LABELS: Record<AccountStatus, string> = { active: "Activo", inactive: "Inactivo" };
 
 type Feedback = { type: "success" | "error"; message: string } | null;
@@ -81,7 +83,7 @@ function UserFormModal({
   const editingSelf = !!account && isSelf(account);
   const [name, setName] = useState(account?.name ?? "");
   const [email, setEmail] = useState(account?.email ?? "");
-  const [role, setRole] = useState<AccountRole>(account?.role ?? "user");
+  const [role, setRole] = useState<AccountRole>(account?.role ?? "sponsor");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -166,8 +168,11 @@ function UserFormModal({
 
         <div className="form-field">
           <span className="field-label">Rol *</span>
+          {role === "admin" ? (
+            <RoleBadge role="admin" />
+          ) : (
           <div className="role-toggle" role="radiogroup" aria-label="Rol">
-            {(Object.keys(ROLE_LABELS) as AccountRole[]).map((r) => (
+            {ASSIGNABLE_ROLES.map((r) => (
               <button
                 key={r}
                 type="button"
@@ -184,7 +189,12 @@ function UserFormModal({
               </button>
             ))}
           </div>
-          {editingSelf && <p className="field-hint">No puedes cambiar el rol de tu propia cuenta.</p>}
+          )}
+          {editingSelf ? (
+            <p className="field-hint">No puedes cambiar el rol de tu propia cuenta.</p>
+          ) : (
+            role === "admin" && <p className="field-hint">El rol de administrador no se cambia desde este módulo.</p>
+          )}
         </div>
 
         {!isEditing && (
@@ -429,7 +439,8 @@ export function Users() {
           <span>Rol</span>
           <select value={roleFilter} onChange={(e) => updateFilter(setRoleFilter)(e.target.value as AccountRole | "all")}>
             <option value="all">Todos</option>
-            <option value="user">{ROLE_LABELS.user}</option>
+            <option value="sponsor">{ROLE_LABELS.sponsor}</option>
+            <option value="creator">{ROLE_LABELS.creator}</option>
             <option value="admin">{ROLE_LABELS.admin}</option>
           </select>
         </label>
