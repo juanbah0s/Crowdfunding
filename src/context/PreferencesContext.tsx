@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState, ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, ReactNode } from "react";
 import { usersApi } from "../api/users";
 import { useUser } from "./UserContext";
 import {
@@ -41,11 +41,26 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
       .catch((err) => console.error("Error loading preferences:", err));
   }, [isBackendSession, userId]);
 
+  // El servidor guarda el usuario completo en cada PUT: dos cambios parciales seguidos se pisaban.
+  // Por eso cada guardado envía todas las preferencias y los envíos van en cola, uno tras otro.
+  const latest = useRef(preferences);
+  const saveQueue = useRef<Promise<void>>(Promise.resolve());
+  useEffect(() => {
+    latest.current = preferences;
+  }, [preferences]);
+
   const setPreferences = useCallback(
     (changes: Partial<Preferences>) => {
-      setState((prev) => ({ ...prev, ...changes }));
+      const next = { ...latest.current, ...changes };
+      latest.current = next;
+      setState(next);
       if (isBackendSession) {
-        usersApi.updatePreferences(changes).catch((err) => console.error("Error saving preferences:", err));
+        saveQueue.current = saveQueue.current
+          .then(() => usersApi.updatePreferences(next))
+          .then(
+            () => undefined,
+            (err) => console.error("Error saving preferences:", err),
+          );
       }
     },
     [isBackendSession],
