@@ -7,6 +7,8 @@ import { categoriesApi } from "../api/categories";
 import { campaignsApi } from "../api/campaigns";
 import { contributionsApi } from "../api/contributions";
 import { adminApi } from "../api/admin";
+import { notificationsApi } from "../api/notifications";
+import type { NotificationResponse, UpdateCampaignRequest } from "../api/types";
 import { getApiError, SESSION_KEY, TOKEN_KEY } from "../api/client";
 import {
   mapCampaign,
@@ -156,6 +158,8 @@ export interface CampaignChanges {
 
 interface UserContextType {
   user: User | null;
+  /** Sesión de una cuenta real del backend (no de demostración). */
+  isBackendSession: boolean;
   transactions: Transaction[];
   campaigns: Campaign[];
   notifications: Notification[];
@@ -164,21 +168,32 @@ interface UserContextType {
   login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
   logout: () => void;
-  verifyPassword: (password: string) => Promise<ActionResult>;
-  updateProfile: (name: string, email: string) => Promise<ActionResult>;
+  /** HU-S01: el servidor valida la contraseña actual. */
+  updateProfile: (name: string, email: string, password: string) => Promise<ActionResult>;
   recharge: (amount: number) => Promise<void>;
   refreshBalance: () => Promise<void>;
   canManageCampaign: (campaign: Campaign) => boolean;
-  publishCampaign: (draft: CampaignDraft) => Promise<ActionResult<Campaign>>;
-  updateCampaign: (id: string, changes: CampaignChanges) => Promise<ActionResult>;
-  changeCampaignStatus: (id: string, status: CampaignStatus) => Promise<ActionResult>;
+  /** HU-S02: el PIN se envía al servidor, que solo guarda su hash. */
+  publishCampaign: (draft: CampaignDraft, pin: string) => Promise<ActionResult<Campaign>>;
+  /** HU-S04: el servidor valida el PIN de esta campaña. */
+  updateCampaign: (id: string, changes: CampaignChanges, pin: string) => Promise<ActionResult>;
+  /** HU-S05: cerrar exige el PIN de la campaña y la contraseña de la cuenta. */
+  changeCampaignStatus: (
+    id: string,
+    status: CampaignStatus,
+    credentials?: { pin: string; password: string },
+  ) => Promise<ActionResult>;
+  /** HU-S06: el servidor valida la contraseña de la cuenta antes de descontar saldo. */
   contribute: (
     campaignId: string,
     amount: number,
     rewardId: string | null,
+    password: string,
     options?: { simulateFailure?: boolean },
   ) => Promise<ActionResult<ContributionReceipt>>;
   markNotificationsRead: () => void;
+  /** HU-15: vuelve a consultar las notificaciones del servidor. */
+  refreshNotifications: () => Promise<void>;
   isSelf: (account: Account) => boolean;
   getFinancialFootprint: (email: string) => FinancialFootprint;
   createAccount: (input: AccountInput & { password: string }) => Promise<ActionResult<Account>>;
@@ -420,6 +435,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const [accounts, setAccounts] = useState<Account[]>(() => initialState?.accounts ?? seedAccounts());
   const [campaigns, setCampaigns] = useState<Campaign[]>(initialState?.campaigns ?? MOCK_CAMPAIGNS);
   const [notifications, setNotifications] = useState<Notification[]>(initialState?.notifications ?? []);
+  const [serverNotifications, setServerNotifications] = useState<NotificationResponse[]>([]);
   const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
 
   useEffect(() => {
@@ -439,9 +455,11 @@ export function UserProvider({ children }: { children: ReactNode }) {
     }
   }, [session]);
 
+  // Los movimientos locales solo existen en las cuentas de demostración; las reales vienen del servidor
+  // y sumarlos dos veces duplicaba los aportes y descontaba el saldo dos veces.
   const localSpent = useMemo(
     () =>
-      session
+      session?.demo
         ? localTransactions
             .filter((t) => t.type === "contribution" && t.userId === session.id)
             .reduce((sum, t) => sum + t.amount, 0)
@@ -457,11 +475,28 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const transactions = useMemo(
     () =>
       session
-        ? [...localTransactions.filter((t) => t.userId === session.id), ...serverTransactions].sort((a, b) =>
-            b.date.localeCompare(a.date),
-          )
+        ? (session.demo ? localTransactions.filter((t) => t.userId === session.id) : serverTransactions)
+            .slice()
+            .sort((a, b) => b.date.localeCompare(a.date))
         : [],
     [localTransactions, serverTransactions, session],
+  );
+
+  // HU-15: en las cuentas reales, la bandeja es la del servidor (hitos de financiación).
+  const visibleNotifications: Notification[] = useMemo(
+    () =>
+      session && !session.demo
+        ? serverNotifications.map((n) => ({
+            id: n.id,
+            recipientEmail: session.email,
+            channel: "system" as const,
+            subject: n.title,
+            body: n.message,
+            date: n.createdAt,
+            read: n.read,
+          }))
+        : notifications,
+    [session, serverNotifications, notifications],
   );
 
   const refreshBalance = useCallback(async () => {
@@ -488,11 +523,21 @@ export function UserProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const loadCampaigns = useCallback(async () => {
+  const loadNotifications = useCallback(async () => {
+    try {
+      const { notifications: list } = await notificationsApi.list();
+      setServerNotifications(list);
+    } catch (err) {
+      console.error("Error loading notifications:", err);
+    }
+  }, []);
+
+  // Sin sesión solo se piden las campañas públicas: /campaigns/mine exige token.
+  const loadCampaigns = useCallback(async (includeManaged = true) => {
     try {
       const [publicCampaigns, managedCampaigns] = await Promise.all([
         campaignsApi.list(),
-        campaignsApi.listManaged(),
+        includeManaged ? campaignsApi.listManaged() : Promise.resolve([]),
       ]);
       const campaignsById = new Map(
         publicCampaigns.map((campaign) => [campaign.id, mapCampaign(campaign)]),
@@ -524,12 +569,24 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   const isBackendAdmin = !!session && !session.demo && session.role === "admin";
 
+  const hasBackendSession = !!session && !session.demo;
+  const isAnonymous = !session;
+
+  // Las cuentas de demostración no existen en el servidor: su bandeja es local.
+  const refreshNotifications = useCallback(async () => {
+    if (hasBackendSession) await loadNotifications();
+  }, [hasBackendSession, loadNotifications]);
+
   useEffect(() => {
-    if (session && !session.demo) {
+    if (hasBackendSession) {
       void loadCategories();
       void loadCampaigns();
+      void loadNotifications();
+    } else if (isAnonymous) {
+      // Visitantes sin sesión: el listado público viene del servidor, no de los datos de ejemplo.
+      void loadCampaigns(false);
     }
-  }, [session, loadCategories, loadCampaigns]);
+  }, [hasBackendSession, isAnonymous, loadCategories, loadCampaigns, loadNotifications]);
 
   useEffect(() => {
     if (isBackendAdmin) void loadAccounts();
@@ -630,6 +687,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     authApi.logout();
     setSession(null);
     setServerTransactions([]);
+    setServerNotifications([]);
     setCampaigns(MOCK_CAMPAIGNS);
     setCategories([]);
   };
@@ -654,33 +712,23 @@ export function UserProvider({ children }: { children: ReactNode }) {
     return normalized !== normalizeEmail(ownEmail) && accounts.some((a) => a.email === normalized);
   };
 
-  // Confirmation in the client; server-side authorization remains unchanged.
-  const verifyPassword = async (password: string): Promise<ActionResult> => {
-    if (!session) return { ok: false, error: "Debes iniciar sesión." };
-    if (!password) return { ok: false, error: "Ingresa tu contraseña actual." };
-    const invalid = { ok: false as const, error: "No se pudo confirmar tu contraseña." };
-    try {
-      if (session.demo) {
-        const account = accounts.find((a) => a.email === normalizeEmail(session.email));
-        const valid = findAccount(session.email)
-          ? checkPassword(session.email, password)
-          : account?.password !== undefined && account.password === password;
-        if (!valid || account?.status === "inactive") return invalid;
-      } else {
-        const confirmed = await authApi.verifyPassword(session.email, password);
-        if (String(confirmed.id) !== String(session.id)) return invalid;
-      }
-      return { ok: true, data: undefined };
-    } catch (err) {
-      return { ok: false, error: getApiError(err, "No se pudo confirmar tu contraseña.") };
-    }
+  // Solo para las cuentas de demostración, que no existen en el servidor. Las cuentas reales envían
+  // la contraseña al backend, que la valida con su límite de intentos (HU-S07).
+  const verifyDemoPassword = (password: string) => {
+    if (!session) return false;
+    const account = accounts.find((a) => a.email === normalizeEmail(session.email));
+    const valid = findAccount(session.email)
+      ? checkPassword(session.email, password)
+      : account?.password !== undefined && account.password === password;
+    return valid && account?.status !== "inactive";
   };
 
-  const updateProfile = async (name: string, email: string): Promise<ActionResult> => {
+  const updateProfile = async (name: string, email: string, password: string): Promise<ActionResult> => {
     if (!session) return { ok: false, error: "Debes iniciar sesión." };
     if (!name.trim() || !email.trim()) {
       return { ok: false, error: "Por favor completa todos los campos obligatorios antes de continuar." };
     }
+    if (!password) return { ok: false, error: "Ingresa tu contraseña actual." };
     if (!isValidEmail(email)) return { ok: false, error: "Ingresa un correo electrónico válido." };
     if (emailTakenByOther(email, session.email)) {
       return { ok: false, error: "El correo ya pertenece a otro usuario registrado." };
@@ -690,9 +738,10 @@ export function UserProvider({ children }: { children: ReactNode }) {
     const nextEmail = normalizeEmail(email);
     try {
       if (session.demo) {
+        if (!verifyDemoPassword(password)) return { ok: false, error: "No se pudo confirmar tu contraseña." };
         if (findAccount(previousEmail)) renameAccount(previousEmail, nextName, nextEmail);
       } else {
-        await usersApi.updateProfile({ name: nextName, email: nextEmail });
+        await usersApi.updateProfile({ name: nextName, email: nextEmail, password });
       }
     } catch (err) {
       return { ok: false, error: getApiError(err, "No se pudo actualizar el perfil.") };
@@ -852,7 +901,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const canManageCampaign = (campaign: Campaign) =>
     !!user && (user.role === "admin" || campaign.creatorEmail === user.email);
 
-  const publishCampaign = async (draft: CampaignDraft): Promise<ActionResult<Campaign>> => {
+  const publishCampaign = async (draft: CampaignDraft, pin: string): Promise<ActionResult<Campaign>> => {
     if (!user) return { ok: false, error: "Debes iniciar sesión para publicar." };
     if (!(draft.goal > 0)) {
       return { ok: false, error: "La meta de financiación debe ser mayor a cero." };
@@ -893,6 +942,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
           minAmount: r.minAmount,
           stock: r.stock,
         })),
+        pin,
       });
       const campaign = mapCampaign(created);
       setCampaigns((prev) => [campaign, ...prev]);
@@ -906,7 +956,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const updateCampaign = async (id: string, changes: CampaignChanges): Promise<ActionResult> => {
+  const updateCampaign = async (id: string, changes: CampaignChanges, pin: string): Promise<ActionResult> => {
     const campaign = campaigns.find((c) => c.id === id);
     if (!campaign) return { ok: false, error: "La campaña no existe." };
     if (!canManageCampaign(campaign)) {
@@ -931,10 +981,11 @@ export function UserProvider({ children }: { children: ReactNode }) {
       return { ok: false, error: "La meta de financiación debe ser mayor a cero." };
     }
     try {
-      const body: any = {
+      const body: UpdateCampaignRequest = {
         title: changes.title.trim(),
         description: changes.description.trim(),
         images: changes.images,
+        pin,
       };
       if (!hasContributions) {
         if (changes.goal !== undefined) body.goal = changes.goal;
@@ -961,7 +1012,11 @@ export function UserProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const changeCampaignStatus = async (id: string, status: CampaignStatus): Promise<ActionResult> => {
+  const changeCampaignStatus = async (
+    id: string,
+    status: CampaignStatus,
+    credentials?: { pin: string; password: string },
+  ): Promise<ActionResult> => {
     const campaign = campaigns.find((c) => c.id === id);
     if (!campaign) return { ok: false, error: "La campaña no existe." };
     if (!canManageCampaign(campaign)) {
@@ -973,24 +1028,12 @@ export function UserProvider({ children }: { children: ReactNode }) {
     if (campaign.status === "closed") {
       return { ok: false, error: "La campaña está cerrada de forma permanente." };
     }
+    if (status === "closed" && (!credentials?.pin || !credentials.password)) {
+      return { ok: false, error: "Ingresa la contraseña de campaña y la de tu cuenta para cerrarla." };
+    }
     try {
-      await campaignsApi.updateStatus(id, toBackendStatus(status));
+      await campaignsApi.updateStatus(id, toBackendStatus(status), status === "closed" ? credentials : undefined);
       setCampaigns((prev) => prev.map((c) => (c.id === id ? { ...c, status } : c)));
-      if (status === "closed") {
-        const sentAt = new Date().toISOString();
-        setNotifications((prev) => [
-          ...campaign.backerEmails.map((email) => ({
-            id: createId("N"),
-            recipientEmail: email,
-            channel: "email" as const,
-            subject: `La campaña "${campaign.title}" ha sido cerrada`,
-            body: `El creador cerró la campaña "${campaign.title}". Ya no recibirá nuevos aportes. Recaudo final: ${campaign.raised.toLocaleString("es-CO")} COP de una meta de ${campaign.goal.toLocaleString("es-CO")} COP.`,
-            date: sentAt,
-            read: false,
-          })),
-          ...prev,
-        ]);
-      }
       return { ok: true, data: undefined };
     } catch (err) {
       return { ok: false, error: getApiError(err, "No se pudo cambiar el estado de la campaña.") };
@@ -1001,9 +1044,11 @@ export function UserProvider({ children }: { children: ReactNode }) {
     campaignId: string,
     amount: number,
     rewardId: string | null,
+    password: string,
     options?: { simulateFailure?: boolean },
   ): Promise<ActionResult<ContributionReceipt>> => {
     if (!user) return { ok: false, error: "Debes iniciar sesión para aportar." };
+    if (!password) return { ok: false, error: "Ingresa tu contraseña para confirmar el aporte." };
     const campaign = campaigns.find((c) => c.id === campaignId);
     if (!campaign) return { ok: false, error: "La campaña no existe." };
     if (campaign.status !== "active") {
@@ -1029,6 +1074,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
       const receipt = await contributionsApi.confirm(campaignId, {
         amount,
         rewardId: rewardId ?? undefined,
+        password,
       });
       const mapped = mapContributionReceipt(receipt, user.email);
       setCampaigns((prev) =>
@@ -1044,35 +1090,11 @@ export function UserProvider({ children }: { children: ReactNode }) {
             : c,
         ),
       );
-      setLocalTransactions((prev) => [
-        {
-          id: mapped.transactionId,
-          date: mapped.date,
-          type: "contribution",
-          amount,
-          campaignId,
-          campaignName: campaign.title,
-          rewardTitle: reward?.title,
-          userId: user.id,
-          userEmail: user.email,
-        },
-        ...prev,
-      ]);
-      setNotifications((prev) => [
-        {
-          id: createId("N"),
-          recipientEmail: user.email,
-          channel: "email",
-          subject: `Comprobante de tu aporte a "${campaign.title}"`,
-          body: `Transacción ${mapped.transactionId}. Aportaste ${amount.toLocaleString("es-CO")} COP${
-            reward ? ` con la recompensa "${reward.title}"` : " sin recompensa"
-          }. Saldo restante: ${mapped.remainingBalance.toLocaleString("es-CO")} COP.`,
-          date: new Date().toISOString(),
-          read: false,
-        },
-        ...prev,
-      ]);
+      // El historial, el saldo y las notificaciones (comprobante por correo e hitos) salen del servidor;
+      // se recargan las campañas porque el contador cuenta patrocinadores distintos, no aportes (HU-13).
       await refreshBalance();
+      void loadNotifications();
+      void loadCampaigns();
       return { ok: true, data: mapped };
     } catch (err) {
       return { ok: false, error: getApiError(err, "No se pudo procesar el aporte.") };
@@ -1081,6 +1103,12 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   const markNotificationsRead = () => {
     if (!user) return;
+    if (hasBackendSession) {
+      if (!serverNotifications.some((n) => !n.read)) return;
+      setServerNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+      notificationsApi.markAllAsRead().catch((err) => console.error("Error marking notifications as read:", err));
+      return;
+    }
     setNotifications((prev) => prev.map((n) => (n.recipientEmail === user.email ? { ...n, read: true } : n)));
   };
 
@@ -1088,15 +1116,15 @@ export function UserProvider({ children }: { children: ReactNode }) {
     <UserContext.Provider
       value={{
         user,
+        isBackendSession: hasBackendSession,
         transactions,
         campaigns,
-        notifications,
+        notifications: visibleNotifications,
         accounts,
         categories,
         login,
         register,
         logout,
-        verifyPassword,
         updateProfile,
         recharge,
         refreshBalance,
@@ -1112,6 +1140,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
         changeCampaignStatus,
         contribute,
         markNotificationsRead,
+        refreshNotifications,
       }}
     >
       {children}

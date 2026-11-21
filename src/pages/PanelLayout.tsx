@@ -1,5 +1,5 @@
 import { NavLink, Link, Outlet, Navigate, useNavigate, useLocation } from "react-router";
-import { Bell, ShieldAlert } from "lucide-react";
+import { Bell, Settings, ShieldAlert } from "lucide-react";
 import { useUser } from "../context/UserContext";
 import "./Panel.css";
 import "./Campaigns.css";
@@ -64,6 +64,16 @@ export function PanelLayout() {
                   Usuarios
                 </NavLink>
               )}
+              {user.role === "admin" && (
+                <NavLink to="/transacciones" className={navClass}>
+                  Transacciones
+                </NavLink>
+              )}
+              {(user.role === "admin" || user.role === "creator") && (
+                <NavLink to="/reportes" className={navClass}>
+                  Reportes
+                </NavLink>
+              )}
               <NavLink to="/perfil" className={navClass}>
                 Perfil
               </NavLink>
@@ -74,6 +84,11 @@ export function PanelLayout() {
                 <span className="panel__bell">
                   <Bell size={17} />
                   {unreadCount > 0 && <span className="panel__bell-count">{unreadCount}</span>}
+                </span>
+              </NavLink>
+              <NavLink to="/preferencias" className={navClass} aria-label="Preferencias" title="Preferencias">
+                <span className="panel__bell">
+                  <Settings size={17} />
                 </span>
               </NavLink>
               <button
@@ -87,9 +102,16 @@ export function PanelLayout() {
               </button>
             </>
           ) : (
+            <>
+            <NavLink to="/preferencias" className={navClass} aria-label="Preferencias" title="Preferencias">
+              <span className="panel__bell">
+                <Settings size={17} />
+              </span>
+            </NavLink>
             <Link to="/auth" className="panel__submit panel__auth-btn">
               Iniciar sesión / Registrarse
             </Link>
+            </>
           )}
         </div>
       </nav>

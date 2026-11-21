@@ -29,7 +29,7 @@ type Feedback = { type: "success" | "error"; message: string; suggestRecharge?: 
 
 export function CampaignDetail() {
   const { id } = useParams();
-  const { user, campaigns, contribute, verifyPassword } = useUser();
+  const { user, campaigns, contribute } = useUser();
   const campaign = campaigns.find((c) => c.id === id);
 
   const [activeImage, setActiveImage] = useState(0);
@@ -89,13 +89,9 @@ export function CampaignDetail() {
     processingRef.current = true;
     setIsProcessing(true);
     try {
-      const verified = await verifyPassword(password);
+      // HU-S06: la contraseña viaja con el aporte y la valida el servidor.
+      const result = await contribute(campaign.id, parsedAmount, rewardId, password);
       setPassword("");
-      if (!verified.ok) {
-        setContributionFeedback({ type: "error", message: verified.error });
-        return;
-      }
-      const result = await contribute(campaign.id, parsedAmount, rewardId);
       if (!result.ok) {
         setContributionFeedback({
           type: "error",

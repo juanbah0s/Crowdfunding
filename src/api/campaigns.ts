@@ -1,7 +1,9 @@
 import { api } from "./client";
 import type {
+  CampaignEarningsResponse,
   CampaignResponse,
   CreateCampaignRequest,
+  SponsorContributionsSummaryResponse,
   UpdateCampaignRequest,
   UpdateCampaignStatusRequest,
 } from "./types";
@@ -36,8 +38,29 @@ export const campaignsApi = {
     return res.data;
   },
 
-  updateStatus: async (id: string, status: string): Promise<CampaignResponse> => {
-    const res = await api.patch<CampaignResponse>(`/campaigns/${id}/status`, { status });
+  /** HU-S05: cerrar exige `pin` y `password`; pausar o reactivar no. */
+  updateStatus: async (
+    id: string,
+    status: UpdateCampaignStatusRequest["status"],
+    credentials?: { pin: string; password: string },
+  ): Promise<CampaignResponse> => {
+    const body: UpdateCampaignStatusRequest = { status, ...credentials };
+    const res = await api.patch<CampaignResponse>(`/campaigns/${id}/status`, body);
+    return res.data;
+  },
+
+  /** HU-14: recaudo y patrocinadores de una campaña propia, con filtros opcionales. */
+  earnings: async (
+    id: string,
+    filters?: { contributor?: string; reward?: string },
+  ): Promise<CampaignEarningsResponse> => {
+    const res = await api.get<CampaignEarningsResponse>(`/campaigns/${id}/earnings`, { params: filters });
+    return res.data;
+  },
+
+  /** HU-14: total aportado por el patrocinador y detalle por campaña. */
+  sponsorSummary: async (): Promise<SponsorContributionsSummaryResponse> => {
+    const res = await api.get<SponsorContributionsSummaryResponse>("/campaigns/contributions/summary");
     return res.data;
   },
 };

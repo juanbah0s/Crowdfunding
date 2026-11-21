@@ -165,6 +165,8 @@ export interface CreateCampaignRequest {
     minAmount: number;
     stock: number;
   }[];
+  /** HU-S02: PIN de la campaña, exactamente 6 dígitos. */
+  pin: string;
 }
 
 export interface UpdateCampaignRequest {
@@ -180,15 +182,116 @@ export interface UpdateCampaignRequest {
     minAmount: number;
     stock: number;
   }[];
+  /** HU-S04: PIN de esta campaña. */
+  pin: string;
 }
 
 export interface UpdateCampaignStatusRequest {
   status: CampaignStatusBackend;
+  /** HU-S05: solo para cerrar. */
+  pin?: string;
+  password?: string;
 }
 
 export interface ContributionConfirmationRequest {
   amount: number;
   rewardId?: string | null;
+  /** HU-S06: contraseña de la cuenta. */
+  password: string;
+}
+
+/** HU-15: notificación de la plataforma (por ejemplo, un hito de financiación). */
+export interface NotificationResponse {
+  id: string;
+  campaignId: string;
+  title: string;
+  message: string;
+  read: boolean;
+  createdAt: string;
+}
+
+export interface NotificationSummaryResponse {
+  unreadCount: number;
+  notifications: NotificationResponse[];
+}
+
+/** HU-16: un aporte del historial; campaignStatus es el estado actual de la campaña. */
+export interface ContributionHistoryItem {
+  transactionId: string;
+  campaignId: string;
+  campaignName: string;
+  amount: number;
+  date: string;
+  rewardId: string | null;
+  rewardName: string | null;
+  campaignStatus: CampaignStatusBackend | null;
+}
+
+export interface ContributionHistoryResponse {
+  totalContributed: number;
+  contributionsCount: number;
+  contributions: ContributionHistoryItem[];
+}
+
+/** HU-14: recaudo de una campaña propia y sus patrocinadores. */
+export interface CampaignEarningsResponse {
+  campaignId: string;
+  campaignName: string;
+  totalRaised: number;
+  contributorsCount: number;
+  contributions: {
+    transactionId: string;
+    contributorId: string;
+    contributorName: string | null;
+    contributorEmail: string | null;
+    amount: number;
+    date: string;
+    rewardId: string | null;
+    rewardName: string | null;
+  }[];
+}
+
+/** HU-14: total aportado por el patrocinador y detalle por campaña. */
+export interface SponsorContributionsSummaryResponse {
+  totalContributed: number;
+  campaigns: { campaignId: string; campaignName: string; totalContributed: number }[];
+}
+
+/** HU-17: movimiento del registro general (solo admin). */
+export interface AdminTransactionResponse {
+  id: string;
+  date: string;
+  type: string;
+  userName: string;
+  amount: number;
+  status: string;
+}
+
+/** HU-18: campaña activa del reporte. */
+export interface ActiveCampaignReportItem {
+  id: string;
+  title: string;
+  goal: number;
+  currentRaised: number;
+  percentage: number;
+  daysRemaining: number;
+  alert: boolean;
+}
+
+/** HU-19: fondos recaudados en un periodo. */
+export interface PeriodFundsReportResponse {
+  totalFunds: number;
+  contributionCount: number;
+  averageContribution: number;
+  message: string;
+}
+
+/** HU-22 / HU-23: preferencias de interfaz guardadas en el servidor. */
+export interface PreferencesResponse {
+  /** medium = Normal, large = Grande, xlarge = Extra grande; small existe por compatibilidad. */
+  fontSize: "small" | "medium" | "large" | "xlarge";
+  theme: "light" | "dark" | "system";
+  language: "es" | "en";
 }
 
 export interface RechargeRequest {
@@ -202,4 +305,6 @@ export interface CreateCategoryRequest {
 export interface UpdateProfileRequest {
   name: string;
   email: string;
+  /** HU-S01: contraseña actual de la cuenta. */
+  password: string;
 }

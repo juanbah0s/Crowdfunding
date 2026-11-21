@@ -1,5 +1,6 @@
 import { api } from "./client";
 import type {
+  AdminTransactionResponse,
   AdminCreateUserRequest,
   AdminUpdateUserRequest,
   AdminUserActionRequest,
@@ -37,5 +38,16 @@ export const adminApi = {
 
   changeUserStatus: async (id: string, action: "DISABLE" | "ENABLE"): Promise<void> => {
     await api.patch(`/admin/users/${id}/status`, { action });
+  },
+
+  /** HU-17: registro general de transacciones, de solo lectura. Fechas en ISO-8601. */
+  listTransactions: async (filters?: {
+    startDate?: string;
+    endDate?: string;
+    type?: string;
+    userId?: string;
+  }): Promise<AdminTransactionResponse[]> => {
+    const res = await api.get<AdminTransactionResponse[]>("/admin/transactions", { params: filters });
+    return res.data;
   },
 };

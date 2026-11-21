@@ -33,8 +33,13 @@ api.interceptors.response.use(
 
 /** Extrae el mensaje de error del backend (formato { message, details }). */
 export function getApiError(err: unknown, fallback = 'Error inesperado'): string {
-  const e = err as { response?: { data?: { message?: string; details?: Record<string, string> } }; message?: string };
+  const e = err as {
+    response?: { status?: number; data?: { message?: string; details?: Record<string, string> } };
+    message?: string;
+  };
   const data = e.response?.data;
+  // En un 429 (HU-S07) details solo trae retryAfterSeconds; el mensaje ya dice cuánto esperar.
+  if (e.response?.status === 429 && data?.message) return data.message;
   const firstDetail = data?.details ? Object.values(data.details)[0] : undefined;
   return firstDetail ?? data?.message ?? (e.response ? fallback : 'No se pudo conectar con el servidor.');
 }

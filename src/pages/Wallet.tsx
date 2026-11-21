@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router";
 import { CheckCircle2, AlertCircle } from "lucide-react";
 import { useUser } from "../context/UserContext";
 import { getApiError } from "../api/client";
@@ -101,7 +102,7 @@ export function Wallet() {
                 fontWeight: 700,
                 letterSpacing: "0.05em",
                 textTransform: "uppercase",
-                color: "#71717a",
+                color: "var(--c-text-4)",
                 marginBottom: "0.45rem",
               }}
             >
@@ -121,7 +122,7 @@ export function Wallet() {
               }}
               className="amount-input"
             />
-            <p style={{ fontSize: "0.68rem", color: "#a1a1aa", marginTop: "0.4rem" }}>
+            <p style={{ fontSize: "0.68rem", color: "var(--c-text-5)", marginTop: "0.4rem" }}>
               Mínimo {fmt(MIN)} · Máximo {fmt(MAX)}
             </p>
           </div>
@@ -136,10 +137,15 @@ export function Wallet() {
 
       {/* Transaction history */}
       <div className="panel__card" id="movimientos">
-        <h2 className="panel__card-title">Historial de movimientos</h2>
+        <div className="panel__section-header">
+          <h2 className="panel__card-title" style={{ margin: 0 }}>Historial de movimientos</h2>
+          <Link to="/historial" className="text-link">
+            Historial de aportes →
+          </Link>
+        </div>
         <div className="panel__list">
           {transactions.length === 0 && (
-            <p style={{ fontSize: "0.875rem", color: "#a1a1aa", textAlign: "center", padding: "1rem 0" }}>
+            <p style={{ fontSize: "0.875rem", color: "var(--c-text-5)", textAlign: "center", padding: "1rem 0" }}>
               Aún no tienes movimientos.
             </p>
           )}
