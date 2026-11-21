@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router";
-import { AlertCircle, ArrowLeft, ImagePlus, Lock, Plus, Trash2, X, Gift } from "lucide-react";
+import { AlertCircle, ArrowLeft, ImagePlus, KeyRound, Lock, Plus, Trash2, X, Gift } from "lucide-react";
 import { useUser } from "../context/UserContext";
 import type { Campaign } from "../context/UserContext";
 import { formatCurrency } from "../lib/campaignUtils";
+import { campaignPins, pinError } from "../api/campaignPins";
 import "./Campaigns.css";
 
 const MAX_IMAGES = 4;
@@ -36,7 +37,7 @@ function readFileAsDataUrl(file: File) {
 
 function CampaignForm({ campaign }: { campaign?: Campaign }) {
   const navigate = useNavigate();
-  const { publishCampaign, updateCampaign, categories } = useUser();
+  const { user, publishCampaign, updateCampaign, categories, verifyPassword } = useUser();
   const isEditing = !!campaign;
   const hasContributions = !!campaign && (campaign.raised > 0 || campaign.contributionsCount > 0);
   const isFundingLocked = isEditing && hasContributions;
@@ -48,6 +49,12 @@ function CampaignForm({ campaign }: { campaign?: Campaign }) {
   const [deadline, setDeadline] = useState(campaign?.deadline ?? "");
   const [images, setImages] = useState<string[]>(campaign?.images ?? []);
   const [rewards, setRewards] = useState<RewardInput[]>([]);
+  const [pending, setPending] = useState(false);
+  const pendingRef = useRef(false);
+  const [accountPassword, setAccountPassword] = useState("");
+  const needsPin = !isEditing || !!campaign && !campaignPins.remote && !campaignPins.localPin(campaign.id);
+  const [pin, setPin] = useState("");
+  const [pinConfirm, setPinConfirm] = useState("");
   const [errors, setErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState("");
 
@@ -101,6 +108,9 @@ function CampaignForm({ campaign }: { campaign?: Campaign }) {
       else if (deadline < getTomorrow()) next.deadline = "La fecha límite debe ser posterior a hoy.";
     }
 
+    if (!/^\d{6}$/.test(pin)) next.pin = "Ingresa un PIN de exactamente 6 dígitos.";
+    else if (needsPin && pin !== pinConfirm) next.pinConfirm = "Las contraseñas de campaña no coinciden.";
+
     if (!isEditing) {
       rewards.forEach((r, i) => {
         const minAmount = Number(r.minAmount);
@@ -116,6 +126,7 @@ function CampaignForm({ campaign }: { campaign?: Campaign }) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (pendingRef.current) return;
     const nextErrors = validate();
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) {
@@ -124,13 +135,26 @@ function CampaignForm({ campaign }: { campaign?: Campaign }) {
         nextErrors.goal && Number(goal) <= 0 && goal.trim() !== ""
           ? "No se puede publicar: la meta de financiación debe ser mayor a cero."
           : missingRequired
-            ? "Completa los campos obligatorios antes de continuar."
+            ? "Completa los campos obligatorios antes de guardar."
             : "Revisa los campos marcados.",
       );
       return;
     }
 
+    if (!user) return;
+    pendingRef.current = true;
+    setPending(true);
+    try {
     if (isEditing && campaign) {
+      if (needsPin) {
+        const verified = await verifyPassword(accountPassword);
+        setAccountPassword("");
+        if (!verified.ok) { setFormError(verified.error); return; }
+        await campaignPins.checkAvailable(user.id, pin);
+        await campaignPins.set(campaign.id, user.id, pin);
+      } else if (!(await campaignPins.verify(campaign.id, pin))) {
+        setFormError("La contraseña de campaña es incorrecta."); return;
+      }
       const result = await updateCampaign(campaign.id, {
         title,
         description,
@@ -145,6 +169,7 @@ function CampaignForm({ campaign }: { campaign?: Campaign }) {
       return;
     }
 
+    await campaignPins.checkAvailable(user.id, pin);
     const result = await publishCampaign({
       title,
       description,
@@ -163,7 +188,18 @@ function CampaignForm({ campaign }: { campaign?: Campaign }) {
       setFormError(result.error);
       return;
     }
+    try {
+      await campaignPins.set(result.data.id, user.id, pin);
+    } catch (err) {
+      window.alert("La campaña ya fue publicada, pero no se pudo guardar su PIN. No la publiques otra vez. " + pinError(err));
+    }
     navigate(`/campanas/${result.data.id}`);
+    } catch (err) {
+      setFormError(pinError(err));
+    } finally {
+      pendingRef.current = false;
+      setPending(false);
+    }
   };
 
   const fieldError = (key: string) => errors[key] && <p className="field-error">{errors[key]}</p>;
@@ -426,6 +462,64 @@ function CampaignForm({ campaign }: { campaign?: Campaign }) {
           )}
         </section>
 
+        <section className="panel__card form-section">
+          <h2 className="panel__card-title inline-icon">
+            <KeyRound size={16} /> Contraseña de campaña
+          </h2>
+          <p className="field-hint" style={{ margin: 0 }}>
+            {isEditing
+              ? needsPin ? "Esta campaña no tiene PIN en este navegador. Confirma tu cuenta para configurarlo." : "Ingresa la contraseña de 6 dígitos de esta campaña para guardar los cambios."
+              : "PIN de 6 dígitos exclusivo de esta campaña. Se pedirá para editarla o cerrarla; guárdalo en un lugar seguro."}
+          </p>
+          <div className="form-grid">
+            <div className="form-field">
+              <label htmlFor="campaign-pin" className="field-label">Contraseña de campaña *</label>
+              <input
+                id="campaign-pin"
+                type="password"
+                inputMode="numeric"
+                autoComplete="off"
+                maxLength={6}
+                placeholder="••••••"
+                className={`amount-input${errors.pin ? " input--error" : ""}`}
+                value={pin}
+                onChange={(e) => {
+                  setPin(e.target.value.replace(/\D/g, ""));
+                  clearError("pin");
+                }}
+              />
+              {fieldError("pin")}
+            </div>
+            {needsPin && (
+              <div className="form-field">
+                <label htmlFor="campaign-pin-confirm" className="field-label">Confirmar contraseña *</label>
+                <input
+                  id="campaign-pin-confirm"
+                  type="password"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  maxLength={6}
+                  placeholder="••••••"
+                  className={`amount-input${errors.pinConfirm ? " input--error" : ""}`}
+                  value={pinConfirm}
+                  onChange={(e) => {
+                    setPinConfirm(e.target.value.replace(/\D/g, ""));
+                    clearError("pinConfirm");
+                  }}
+                />
+                {fieldError("pinConfirm")}
+              </div>
+            )}
+          </div>
+          {isEditing && needsPin && (
+            <div className="form-field">
+              <label htmlFor="legacy-account-password" className="field-label">Contraseña de la cuenta *</label>
+              <input id="legacy-account-password" type="password" autoComplete="current-password" className="amount-input" value={accountPassword} onChange={(e) => setAccountPassword(e.target.value)} />
+            </div>
+          )}
+          {!campaignPins.remote && <p className="field-hint">Modo provisional: PIN guardado únicamente en este navegador; no constituye seguridad del servidor.</p>}
+        </section>
+
         {formError && (
           <div className="panel__alert panel__alert--error">
             <AlertCircle size={16} />
@@ -437,7 +531,7 @@ function CampaignForm({ campaign }: { campaign?: Campaign }) {
           <Link to="/mis-campanas" className="btn-ghost">
             Cancelar
           </Link>
-          <button type="submit" className="panel__submit">
+          <button type="submit" className="panel__submit" disabled={pending || (isEditing && needsPin && !accountPassword)}>
             {isEditing ? "Guardar cambios" : "Publicar campaña"}
           </button>
         </div>

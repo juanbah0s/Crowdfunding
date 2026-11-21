@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link } from "react-router";
 import {
   AlertCircle,
@@ -14,6 +14,7 @@ import {
 import { useUser } from "../context/UserContext";
 import type { Campaign, CampaignStatus } from "../context/UserContext";
 import { formatCurrency, formatDate, getProgress, StatusBadge, CampaignCover } from "../lib/campaignUtils";
+import { campaignPins, pinError } from "../api/campaignPins";
 import "./Campaigns.css";
 
 type Feedback = { campaignId: string; type: "success" | "error"; message: string } | null;
@@ -28,21 +29,65 @@ const STATUS_MESSAGES: Record<CampaignStatus, (c: Campaign) => string> = {
 };
 
 export function MyCampaigns() {
-  const { user, campaigns, changeCampaignStatus } = useUser();
+  const { user, campaigns, changeCampaignStatus, verifyPassword } = useUser();
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [closingId, setClosingId] = useState<string | null>(null);
+  const [closePin, setClosePin] = useState("");
+  const [pinConfirm, setPinConfirm] = useState("");
+  const [revealed, setRevealed] = useState<Record<string, string>>({});
+  const [closePassword, setClosePassword] = useState("");
+  const [closeError, setCloseError] = useState("");
+  const [pending, setPending] = useState(false);
+  const pendingRef = useRef(false);
+
+  const openCloseBox = (id: string | null) => {
+    setClosingId(id);
+    setClosePin("");
+    setPinConfirm("");
+    setClosePassword("");
+    setCloseError("");
+  };
 
   const isAdmin = user?.role === "admin";
   const managedCampaigns = isAdmin ? campaigns : campaigns.filter((c) => c.creatorEmail === user?.email);
 
   const handleStatusChange = async (campaign: Campaign, status: CampaignStatus) => {
-    setClosingId(null);
-    const result = await changeCampaignStatus(campaign.id, status);
-    setFeedback(
-      result.ok
-        ? { campaignId: campaign.id, type: "success", message: STATUS_MESSAGES[status](campaign) }
-        : { campaignId: campaign.id, type: "error", message: result.error },
-    );
+    if (pendingRef.current || (status === "closed" && (!closePassword || !/^\d{6}$/.test(closePin)))) return;
+    pendingRef.current = true;
+    setPending(true);
+    try {
+      if (status === "closed") {
+        const verified = await verifyPassword(closePassword);
+        setClosePassword("");
+        if (!verified.ok) {
+          setCloseError("Valores incorrectos.");
+          return;
+        }
+        if (!campaignPins.remote && !campaignPins.localPin(campaign.id)) {
+          if (!user || closePin !== pinConfirm) { setCloseError("Confirma el nuevo PIN."); return; }
+          await campaignPins.checkAvailable(user.id, closePin);
+          await campaignPins.set(campaign.id, user.id, closePin);
+        } else if (!(await campaignPins.verify(campaign.id, closePin))) {
+          setCloseError("Valores incorrectos."); return;
+        }
+      }
+      const result = await changeCampaignStatus(campaign.id, status);
+      if (status === "closed" && !result.ok) {
+        setCloseError(result.error);
+        return;
+      }
+      openCloseBox(null);
+      setFeedback(
+        result.ok
+          ? { campaignId: campaign.id, type: "success", message: STATUS_MESSAGES[status](campaign) }
+          : { campaignId: campaign.id, type: "error", message: result.error },
+      );
+    } catch (err) {
+      setCloseError(pinError(err));
+    } finally {
+      pendingRef.current = false;
+      setPending(false);
+    }
   };
 
   return (
@@ -74,6 +119,7 @@ export function MyCampaigns() {
         <div className="panel__list">
           {managedCampaigns.map((c) => {
             const pct = getProgress(c);
+            const needsPin = !campaignPins.remote && !campaignPins.localPin(c.id);
             const rowFeedback = feedback?.campaignId === c.id ? feedback : null;
             return (
               <div key={c.id} className="managed-card">
@@ -92,6 +138,18 @@ export function MyCampaigns() {
                       {formatDate(c.deadline)}
                       {isAdmin && ` · ${c.creatorName}`}
                     </p>
+                    {isAdmin && (
+                      <div className="panel__list-sub">
+                        <button type="button" className="btn-ghost" onClick={async () => {
+                          if (revealed[c.id]) { setRevealed((prev) => { const next = {...prev}; delete next[c.id]; return next; }); return; }
+                          try {
+                            const pin = await campaignPins.reveal(c.id);
+                            setRevealed((prev) => ({ ...prev, [c.id]: pin ?? "Sin PIN en este navegador" }));
+                          } catch (err) { setFeedback({ campaignId: c.id, type: "error", message: pinError(err) }); }
+                        }}>{revealed[c.id] ? "Ocultar PIN" : "Ver PIN"}</button>
+                        {revealed[c.id] && <span> {revealed[c.id]}</span>}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -108,11 +166,29 @@ export function MyCampaigns() {
                       ¿Cerrar "{c.title}" definitivamente? No podrá reabrirse y se notificará a los{" "}
                       {c.backerEmails.length} patrocinadores.
                     </p>
+                    <div className="form-field">
+                      <label htmlFor={`close-pin-${c.id}`} className="field-label">{needsPin ? "Configurar PIN local de campaña" : "Contraseña de campaña"}</label>
+                      <input id={`close-pin-${c.id}`} type="password" inputMode="numeric" maxLength={6} className="amount-input" value={closePin} disabled={pending} onChange={(e) => { setClosePin(e.target.value.replace(/\D/g, "")); setCloseError(""); }} />
+                      {needsPin && <input aria-label="Confirmar nuevo PIN" placeholder="Confirmar nuevo PIN" type="password" inputMode="numeric" maxLength={6} className="amount-input" value={pinConfirm} disabled={pending} onChange={(e) => setPinConfirm(e.target.value.replace(/\D/g, ""))} />}
+                    </div>
+                    <div className="form-field">
+                      <label htmlFor={`close-password-${c.id}`} className="field-label">Contraseña de la cuenta</label>
+                      <input
+                        id={`close-password-${c.id}`}
+                        type="password"
+                        autoComplete="current-password"
+                        className="amount-input"
+                        value={closePassword}
+                        disabled={pending}
+                        onChange={(e) => { setClosePassword(e.target.value); setCloseError(""); }}
+                      />
+                    </div>
+                    {closeError && <p className="field-error" role="alert">{closeError}</p>}
                     <div className="action-row">
-                      <button className="btn-ghost" onClick={() => setClosingId(null)}>
+                      <button className="btn-ghost" disabled={pending} onClick={() => openCloseBox(null)}>
                         Cancelar
                       </button>
-                      <button className="btn-danger" onClick={() => handleStatusChange(c, "closed")}>
+                      <button className="btn-danger" disabled={pending || !closePassword || closePin.length !== 6 || (needsPin && closePin !== pinConfirm)} onClick={() => handleStatusChange(c, "closed")}>
                         Sí, cerrar campaña
                       </button>
                     </div>
@@ -128,17 +204,17 @@ export function MyCampaigns() {
                       </Link>
                     )}
                     {c.status === "active" && (
-                      <button className="btn-outline" onClick={() => handleStatusChange(c, "paused")}>
+                      <button className="btn-outline" disabled={pending} onClick={() => handleStatusChange(c, "paused")}>
                         <PauseCircle size={14} /> Pausar
                       </button>
                     )}
                     {c.status === "paused" && (
-                      <button className="btn-outline" onClick={() => handleStatusChange(c, "active")}>
+                      <button className="btn-outline" disabled={pending} onClick={() => handleStatusChange(c, "active")}>
                         <PlayCircle size={14} /> Reanudar
                       </button>
                     )}
                     {c.status !== "closed" ? (
-                      <button className="btn-outline btn-outline--danger" onClick={() => setClosingId(c.id)}>
+                      <button className="btn-outline btn-outline--danger" disabled={pending} onClick={() => openCloseBox(c.id)}>
                         <XCircle size={14} /> Cerrar
                       </button>
                     ) : (
