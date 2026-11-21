@@ -15,7 +15,7 @@ function getTotalHistoricalContributions(transactions: ReturnType<typeof useUser
     .reduce((sum, t) => sum + t.amount, 0);
 }
 
-const emptyTextStyle = { fontSize: "0.875rem", color: "#a1a1aa", textAlign: "center" as const, padding: "1rem 0" };
+const emptyTextStyle = { fontSize: "0.875rem", color: "var(--c-text-5)", textAlign: "center" as const, padding: "1rem 0" };
 const linkStyle = { fontSize: "0.8rem", fontWeight: 700, color: "var(--color-accent)", textDecoration: "none" };
 
 export function Dashboard() {
@@ -74,7 +74,7 @@ export function Dashboard() {
           <p className="panel__stat-value" style={{ color: "var(--color-accent)" }}>
             {fmt(totalContributed)}
           </p>
-          <p style={{ fontSize: "0.72rem", color: "#a1a1aa", marginTop: "0.35rem" }}>
+          <p style={{ fontSize: "0.72rem", color: "var(--c-text-5)", marginTop: "0.35rem" }}>
             {contributionCount} contribución{contributionCount !== 1 ? "es" : ""} realizadas
           </p>
         </div>
@@ -92,7 +92,7 @@ export function Dashboard() {
           <p className="panel__stat-value" style={{ color: "#16a34a" }}>
             {fmt(totalRaised)}
           </p>
-          <p style={{ fontSize: "0.72rem", color: "#a1a1aa", marginTop: "0.35rem" }}>
+          <p style={{ fontSize: "0.72rem", color: "var(--c-text-5)", marginTop: "0.35rem" }}>
             en {managedCampaigns.length} campaña{managedCampaigns.length !== 1 ? "s" : ""}
           </p>
         </div>
@@ -135,7 +135,7 @@ export function Dashboard() {
                   <div className="progress" style={{ flex: 1, marginTop: 0 }}>
                     <div className="progress__fill" style={{ width: `${pct}%` }} />
                   </div>
-                  <span style={{ fontSize: "0.72rem", color: "#71717a", minWidth: "2.75rem", textAlign: "right" }}>
+                  <span style={{ fontSize: "0.72rem", color: "var(--c-text-4)", minWidth: "2.75rem", textAlign: "right" }}>
                     {pct}%
                   </span>
                 </div>
@@ -154,8 +154,8 @@ export function Dashboard() {
           <h2 className="panel__card-title" style={{ margin: 0 }}>
             Detalle de aportes por campaña
           </h2>
-          <Link to="/billetera" style={linkStyle}>
-            Ver movimientos →
+          <Link to="/historial" style={linkStyle}>
+            Ver historial de aportes →
           </Link>
         </div>
         <div className="panel__list">
@@ -185,7 +185,7 @@ export function Dashboard() {
                     <div className="progress" style={{ flex: 1, marginTop: 0 }}>
                       <div className="progress__fill" style={{ width: `${pct}%` }} />
                     </div>
-                    <span style={{ fontSize: "0.72rem", color: "#71717a", minWidth: "2.75rem", textAlign: "right" }}>
+                    <span style={{ fontSize: "0.72rem", color: "var(--c-text-4)", minWidth: "2.75rem", textAlign: "right" }}>
                       {pct}% del total
                     </span>
                   </div>

@@ -9,14 +9,14 @@
   flex-direction: column;
   background:
     radial-gradient(1200px 500px at 50% -5%, rgba(229, 57, 53, 0.05), transparent 55%),
-    #f4f4f5;
+    var(--c-surface-muted);
   font-family: var(--font-sans);
 }
 
 /* Navbar ------------------------------------------------------------------- */
 .panel__nav {
-  background: #ffffff;
-  border-bottom: 1px solid #e4e4e7;
+  background: var(--c-surface);
+  border-bottom: 1px solid var(--c-border);
   padding: 0 1.5rem;
   height: 58px;
   display: flex;
@@ -52,18 +52,18 @@
   border-radius: 8px;
   font-size: 0.875rem;
   font-weight: 500;
-  color: #52525b;
+  color: var(--c-text-3);
   text-decoration: none;
   transition: background 0.15s ease, color 0.15s ease;
 }
 
 .panel__nav-link:hover {
-  background: #f4f4f5;
+  background: var(--c-surface-muted);
   color: var(--color-foreground);
 }
 
 .panel__nav-link--active {
-  background: #f4f4f5;
+  background: var(--c-surface-muted);
   color: var(--color-foreground);
   font-weight: 700;
 }
@@ -82,7 +82,7 @@
 }
 
 .panel__logout:hover {
-  background: #fef2f2;
+  background: var(--c-danger-bg);
 }
 
 .panel__bell {
@@ -131,14 +131,14 @@
 
 .panel__subheading {
   font-size: 0.875rem;
-  color: #71717a;
+  color: var(--c-text-4);
   margin: 0.2rem 0 0;
 }
 
 /* Card --------------------------------------------------------------------- */
 .panel__card {
-  background: #ffffff;
-  border: 1px solid #e4e4e7;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
   border-radius: 14px;
   padding: 1.5rem;
   box-shadow:
@@ -160,7 +160,7 @@
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #a1a1aa;
+  color: var(--c-text-5);
 }
 
 .panel__stat-value {
@@ -176,7 +176,7 @@
 .progress {
   width: 100%;
   height: 5px;
-  background: #e4e4e7;
+  background: var(--c-border);
   border-radius: 99px;
   overflow: hidden;
   margin-top: 0.6rem;
@@ -201,8 +201,8 @@
   align-items: center;
   justify-content: space-between;
   padding: 0.85rem 1rem;
-  background: #fafafa;
-  border: 1px solid #f0f0f0;
+  background: var(--c-surface-subtle);
+  border: 1px solid var(--c-border-soft);
   border-radius: 10px;
   gap: 0.75rem;
 }
@@ -216,7 +216,7 @@
 
 .panel__list-sub {
   font-size: 0.725rem;
-  color: #a1a1aa;
+  color: var(--c-text-5);
   margin: 0.1rem 0 0;
 }
 
@@ -247,12 +247,12 @@
 }
 
 .badge--green {
-  background: #f0fdf4;
+  background: var(--c-success-bg);
   color: #15803d;
 }
 
 .badge--red {
-  background: #fef2f2;
+  background: var(--c-danger-bg);
   color: #dc2626;
 }
 
@@ -274,14 +274,14 @@
 }
 
 .panel__alert--success {
-  background: #f0fdf4;
-  border-color: #bbf7d0;
+  background: var(--c-success-bg);
+  border-color: var(--c-success-border);
   color: #15803d;
 }
 
 .panel__alert--error {
-  background: #fef2f2;
-  border-color: #fecaca;
+  background: var(--c-danger-bg);
+  border-color: var(--c-danger-border);
   color: #dc2626;
 }
 
@@ -315,8 +315,8 @@
 .amount-input {
   width: 100%;
   padding: 0.75rem 1rem;
-  background: #fafafa;
-  border: 1px solid #e4e4e7;
+  background: var(--c-surface-subtle);
+  border: 1px solid var(--c-border);
   border-radius: 10px;
   font-size: 1rem;
   font-family: var(--font-sans);
@@ -326,13 +326,13 @@
 
 .amount-input:focus {
   outline: none;
-  background: #fff;
-  border-color: #a1a1aa;
+  background: var(--c-surface);
+  border-color: var(--c-text-5);
   box-shadow: 0 0 0 3px rgba(24, 24, 27, 0.06);
 }
 
 .amount-input::placeholder {
-  color: #a1a1aa;
+  color: var(--c-text-5);
 }
 
 /* Role demo toggle --------------------------------------------------------- */
@@ -354,11 +354,11 @@
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
   background: transparent;
-  color: #71717a;
+  color: var(--c-text-4);
 }
 
 .role-toggle__btn--active {
-  background: #ffffff;
+  background: var(--c-surface);
   color: var(--color-foreground);
   box-shadow: 0 1px 3px rgba(24, 24, 27, 0.12);
 }
@@ -372,6 +372,32 @@
 }
 
 /* Responsive --------------------------------------------------------------- */
+/* Con muchos enlaces (o texto grande, HU-22) la barra se desplaza en horizontal en vez de ensanchar la página. */
+@media (max-width: 960px) {
+  .panel__nav {
+    gap: 0.75rem;
+  }
+
+  .panel__brand {
+    flex-shrink: 0;
+  }
+
+  .panel__nav-links {
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .panel__nav-links::-webkit-scrollbar {
+    display: none;
+  }
+
+  .panel__nav-links > * {
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+}
+
 @media (max-width: 600px) {
   .panel__nav {
     padding: 0 1rem;

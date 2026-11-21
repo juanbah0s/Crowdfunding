@@ -288,8 +288,9 @@ export interface PeriodFundsReportResponse {
 
 /** HU-22 / HU-23: preferencias de interfaz guardadas en el servidor. */
 export interface PreferencesResponse {
-  fontSize: "small" | "medium" | "large";
-  theme: "light" | "dark";
+  /** medium = Normal, large = Grande, xlarge = Extra grande; small existe por compatibilidad. */
+  fontSize: "small" | "medium" | "large" | "xlarge";
+  theme: "light" | "dark" | "system";
   language: "es" | "en";
 }
 

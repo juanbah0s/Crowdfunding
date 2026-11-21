@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { Link } from "react-router";
 import {
   AlertCircle,
+  BarChart3,
   CheckCircle2,
   Eye,
   Megaphone,
@@ -165,6 +166,9 @@ export function MyCampaigns() {
                   <div className="action-row action-row--start">
                     <Link to={`/campanas/${c.id}`} className="btn-ghost">
                       <Eye size={14} /> Ver
+                    </Link>
+                    <Link to={`/campanas/${c.id}/recaudo`} className="btn-ghost">
+                      <BarChart3 size={14} /> Recaudo
                     </Link>
                     {c.status === "active" && (
                       <Link to={`/campanas/${c.id}/editar`} className="btn-outline">

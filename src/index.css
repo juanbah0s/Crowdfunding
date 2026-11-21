@@ -13,6 +13,74 @@
   --color-accent-foreground: #FFFFFF;
 }
 
+/* Paleta de la interfaz como variables, para el tema oscuro (HU-23). */
+:root {
+  color-scheme: light;
+  --c-surface: #ffffff;
+  --c-surface-muted: #f4f4f5;
+  --c-surface-subtle: #fafafa;
+  --c-border: #e4e4e7;
+  --c-border-soft: #f0f0f0;
+  --c-border-strong: #d4d4d8;
+  --c-text-1: #18181b;
+  --c-text-2: #3f3f46;
+  --c-text-3: #52525b;
+  --c-text-4: #71717a;
+  --c-text-5: #a1a1aa;
+  --c-danger-bg: #fef2f2;
+  --c-danger-border: #fecaca;
+  --c-success-bg: #f0fdf4;
+  --c-success-border: #bbf7d0;
+  --c-warning-bg: #fffbeb;
+  --c-warning-border: #fde68a;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-background: #09090b;
+  --color-foreground: #fafafa;
+  --color-primary: #3f3f46;
+  --color-primary-foreground: #fafafa;
+  --c-surface: #18181b;
+  --c-surface-muted: #09090b;
+  --c-surface-subtle: #1f1f23;
+  --c-border: #3f3f46;
+  --c-border-soft: #27272a;
+  --c-border-strong: #52525b;
+  --c-text-1: #fafafa;
+  --c-text-2: #e4e4e7;
+  --c-text-3: #d4d4d8;
+  --c-text-4: #a1a1aa;
+  --c-text-5: #8b8b94;
+  --c-danger-bg: #3b1414;
+  --c-danger-border: #7f1d1d;
+  --c-success-bg: #0f2a1a;
+  --c-success-border: #166534;
+  --c-warning-bg: #2d2306;
+  --c-warning-border: #854d0e;
+}
+
+/* La portada usa utilidades de Tailwind con colores fijos; en modo oscuro se remiten a la paleta. */
+:root[data-theme="dark"] .bg-background { background-color: var(--color-background); }
+:root[data-theme="dark"] .bg-white { background-color: var(--c-surface); }
+:root[data-theme="dark"] .bg-gray-100 { background-color: var(--c-border-soft); }
+:root[data-theme="dark"] .bg-primary { background-color: var(--color-primary); }
+:root[data-theme="dark"] .hover\:bg-gray-50:hover { background-color: var(--c-surface-subtle); }
+:root[data-theme="dark"] .text-primary { color: var(--color-foreground); }
+:root[data-theme="dark"] .text-gray-600 { color: var(--c-text-4); }
+:root[data-theme="dark"] .text-gray-400 { color: var(--c-text-5); }
+:root[data-theme="dark"] .border-gray-200 { border-color: var(--c-border); }
+:root[data-theme="dark"] .border-primary { border-color: var(--c-border-strong); }
+
+/* Tamaño de texto (HU-22): la interfaz usa rem, así que escala completa sin romper el diseño. */
+:root[data-font-size="large"] {
+  font-size: 112.5%;
+}
+
+:root[data-font-size="xlarge"] {
+  font-size: 125%;
+}
+
 html,
 body,
 #root {

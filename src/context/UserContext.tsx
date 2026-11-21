@@ -158,6 +158,8 @@ export interface CampaignChanges {
 
 interface UserContextType {
   user: User | null;
+  /** Sesión de una cuenta real del backend (no de demostración). */
+  isBackendSession: boolean;
   transactions: Transaction[];
   campaigns: Campaign[];
   notifications: Notification[];
@@ -1114,6 +1116,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     <UserContext.Provider
       value={{
         user,
+        isBackendSession: hasBackendSession,
         transactions,
         campaigns,
         notifications: visibleNotifications,

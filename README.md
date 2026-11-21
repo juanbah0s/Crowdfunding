@@ -22,6 +22,8 @@ Este repositorio ya incluye:
 - Contraseña de la cuenta para editar el perfil, aportar y cerrar campañas, validada por el servidor (HU-S01, HU-S05, HU-S06).
 - PIN de campaña validado por el servidor al publicar, editar y cerrar (HU-S02 a HU-S05), con bloqueo tras intentos fallidos (HU-S07).
 - Notificaciones de hitos de financiación desde el servidor (HU-15).
+- Recaudo por campaña con lista de patrocinadores y filtros (HU-14), historial de aportes (HU-16), registro de transacciones para el admin (HU-17) y reportes de campañas activas y de fondos por periodo (HU-18, HU-19).
+- Preferencias de tamaño de texto y tema claro, oscuro o según el sistema, guardadas en el dispositivo y, con una cuenta real, en el servidor (HU-22, HU-23). El cambio de idioma (opcional) no está implementado.
 - Rutas protegidas para usuarios autenticados.
 
 > **Integración con el backend.** El frontend consume los servicios de autenticación, perfil, billetera, categorías, campañas, aportes, notificaciones y administración. El PIN de campaña y las contraseñas de confirmación los valida el servidor; el navegador no guarda PIN. Las cuentas de demostración conservan sus datos locales.
@@ -48,7 +50,7 @@ Este repositorio ya incluye:
 ```
 src
 ├── api/             # Cliente axios (JWT) y módulos auth, users, campaigns, categories, contributions, notifications, reports, admin, mappers
-├── context/         # UserContext: sesión, saldo, campañas, aportes, administración y datos locales
+├── context/         # UserContext (sesión, saldo, campañas, aportes, administración) y PreferencesContext (tema y tamaño de texto)
 ├── lib/             # Utilidades (moneda y fechas), validaciones y cuentas de demostración
 ├── pages/           # Vistas: Auth, Explore, CampaignDetail, CampaignForm, Dashboard,
 │                    #         MyCampaigns, Wallet, Profile, Notifications, Users, PanelLayout
@@ -134,6 +136,8 @@ Estos correos están reservados: nunca se consultan en el backend. Las cuentas d
 | `/campanas/:id` | Detalle de campaña, recompensas y aporte | HU-09, HU-10, HU-11, HU-12 |
 | `/auth` | Registro e inicio de sesión | HU-01, HU-02 |
 
+| `/preferencias` | Tamaño de texto (Normal, Grande, Extra grande) y tema (claro, oscuro o según el sistema); funciona también sin sesión | HU-22, HU-23 |
+
 `/explorar` y cualquier ruta desconocida redirigen a `/`.
 
 ### Protegidas (requieren sesión)
@@ -146,13 +150,17 @@ Estos correos están reservados: nunca se consultan en el backend. Las cuentas d
 | `/mis-campanas` | Gestión de campañas propias (pausar/cerrar); el administrador ve todas | HU-08 |
 | `/campanas/nueva` | Publicar campaña | HU-06 |
 | `/campanas/:id/editar` | Editar campaña activa (solo el creador o un administrador) | HU-07 |
-| `/notificaciones` | Notificaciones del usuario | HU-08 |
+| `/notificaciones` | Notificaciones del servidor, como los hitos de financiación | HU-15 |
+| `/historial` | Historial de aportes: fecha, campaña (enlace), monto, recompensa, estado actual de la campaña y total acumulado | HU-16 |
+| `/campanas/:id/recaudo` | Recaudo de una campaña propia y lista de patrocinadores, filtrable por patrocinador o recompensa | HU-14 |
+| `/reportes` | Campañas activas con alerta (5 días o menos y menos del 50 %) y fondos recaudados por periodo; el creador ve las suyas y el admin todas | HU-18, HU-19 |
 
 ### Solo administrador
 
 | Ruta | Descripción | HU |
 |------|-------------|----|
 | `/usuarios` | Listado, filtros, creación, edición, deshabilitación y eliminación de usuarios | HU-21 |
+| `/transacciones` | Registro de transacciones de solo lectura, filtrable por fechas, tipo y usuario | HU-17 |
 
 Si el usuario no ha iniciado sesión, `RequireAuth` lo redirige al inicio de sesión. Si no es administrador, `RequireAdmin` muestra un aviso de acceso restringido.
 
@@ -216,16 +224,17 @@ Las rutas de la tabla son relativas al prefijo `/api`.
 |--------|-----------|--------|
 | `auth.ts` | POST /auth/register, POST /auth/login | Integrado |
 | `users.ts` | GET /users/balance, PUT /users/profile, POST /users/recharge | Integrado |
-| `users.ts` | GET /users/preferences, PUT /users/preferences (HU-22, HU-23) | Cliente implementado; falta la pantalla |
+| `users.ts` | GET /users/preferences, PUT /users/preferences (HU-22, HU-23) | Integrado |
 | `categories.ts` | GET /categories, POST /categories | Cliente implementado |
 | `campaigns.ts` | GET /campaigns, GET /campaigns/mine, GET /campaigns/{id}, POST /campaigns, PUT /campaigns/{id}, PATCH /campaigns/{id}/status | Integrado |
-| `campaigns.ts` | GET /campaigns/{id}/earnings, GET /campaigns/contributions/summary (HU-14) | Cliente implementado; falta la pantalla |
+| `campaigns.ts` | GET /campaigns/{id}/earnings (HU-14) | Integrado |
+| `campaigns.ts` | GET /campaigns/contributions/summary (HU-14) | Cliente implementado; el panel calcula el resumen con el historial |
 | `contributions.ts` | POST /campaigns/{id}/contributions/confirm | Integrado |
-| `contributions.ts` | GET /contributions/history (HU-16) | Cliente implementado; falta la pantalla |
+| `contributions.ts` | GET /contributions/history (HU-16) | Integrado |
 | `notifications.ts` | GET /notifications, PATCH /notifications/{id}/read, PATCH /notifications/read-all (HU-15) | Integrado |
-| `reports.ts` | GET /reports/active-campaigns, GET /reports/funds-by-period (HU-18, HU-19) | Cliente implementado; falta la pantalla |
+| `reports.ts` | GET /reports/active-campaigns, GET /reports/funds-by-period (HU-18, HU-19) | Integrado |
 | `admin.ts` | GET /admin/users, GET /admin/users/{id}, POST /admin/users, PUT /admin/users/{id}, PATCH /admin/users/{id}/status | Integrado |
-| `admin.ts` | GET /admin/transactions (HU-17) | Cliente implementado; falta la pantalla |
+| `admin.ts` | GET /admin/transactions (HU-17) | Integrado |
 
 Comportamiento:
 

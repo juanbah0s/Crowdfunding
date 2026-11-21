@@ -103,7 +103,7 @@ export function Profile() {
 
           {hasChanges && (
             <>
-              <p style={{ margin: "0.5rem 0 0", fontSize: "0.8rem", color: "#71717a" }}>
+              <p style={{ margin: "0.5rem 0 0", fontSize: "0.8rem", color: "var(--c-text-4)" }}>
                 Por seguridad, confirma tu contraseña para guardar los cambios.
               </p>
               <FloatingField
@@ -124,7 +124,7 @@ export function Profile() {
         </form>
       </div>
 
-      <p style={{ fontSize: "0.75rem", color: "#a1a1aa", maxWidth: 480 }}>
+      <p style={{ fontSize: "0.75rem", color: "var(--c-text-5)", maxWidth: 480 }}>
         Los campos marcados son obligatorios. El correo electrónico se usará para notificaciones y acceso a tu cuenta.
       </p>
     </main>

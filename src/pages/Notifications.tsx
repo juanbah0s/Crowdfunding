@@ -24,7 +24,7 @@ export function Notifications() {
     <main className="panel__main">
       <div>
         <h1 className="panel__heading">Notificaciones</h1>
-        <p className="panel__subheading">Correos enviados a {user?.email}</p>
+        <p className="panel__subheading">Avisos de la plataforma para {user?.email}</p>
       </div>
 
       {inbox.length === 0 ? (

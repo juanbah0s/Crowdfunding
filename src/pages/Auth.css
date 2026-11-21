@@ -13,7 +13,7 @@
   padding: 3rem 1rem;
   background:
     radial-gradient(1200px 600px at 50% -10%, rgba(229, 57, 53, 0.06), transparent 60%),
-    #f4f4f5;
+    var(--c-surface-muted);
   font-family: var(--font-sans);
 }
 
@@ -28,8 +28,8 @@
 
 /* Tarjetas ----------------------------------------------------------------- */
 .auth__card {
-  background: #ffffff;
-  border: 1px solid #e4e4e7;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
   border-radius: 14px;
   box-shadow:
     0 1px 2px rgba(24, 24, 27, 0.04),
@@ -47,7 +47,7 @@
   padding: 1.25rem;
   text-align: center;
   font-size: 0.875rem;
-  color: #18181b;
+  color: var(--c-text-1);
 }
 
 /* Marca -------------------------------------------------------------------- */
@@ -71,7 +71,7 @@
   font-size: 1.05rem;
   line-height: 1.35;
   text-align: center;
-  color: #52525b;
+  color: var(--c-text-3);
   margin: 0 0 1.5rem;
 }
 
@@ -95,14 +95,14 @@
 }
 
 .auth__alert--success {
-  background: #f0fdf4;
-  border-color: #bbf7d0;
+  background: var(--c-success-bg);
+  border-color: var(--c-success-border);
   color: #15803d;
 }
 
 .auth__alert--error {
-  background: #fef2f2;
-  border-color: #fecaca;
+  background: var(--c-danger-bg);
+  border-color: var(--c-danger-border);
   color: #dc2626;
 }
 
@@ -123,22 +123,22 @@
   width: 100%;
   height: 44px;
   padding: 1rem 0.75rem 0.35rem;
-  background: #fafafa;
-  border: 1px solid #e4e4e7;
+  background: var(--c-surface-subtle);
+  border: 1px solid var(--c-border);
   border-radius: 10px;
   font-size: 0.85rem;
-  color: #18181b;
+  color: var(--c-text-1);
   transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
 }
 
 .field__input:hover {
-  border-color: #d4d4d8;
+  border-color: var(--c-border-strong);
 }
 
 .field__input:focus {
   outline: none;
-  background: #ffffff;
-  border-color: #a1a1aa;
+  background: var(--c-surface);
+  border-color: var(--c-text-5);
   box-shadow: 0 0 0 3px rgba(24, 24, 27, 0.06);
 }
 
@@ -148,7 +148,7 @@
   top: 50%;
   transform: translateY(-50%);
   font-size: 0.85rem;
-  color: #71717a;
+  color: var(--c-text-4);
   pointer-events: none;
   transition: all 0.15s ease;
 }
@@ -159,7 +159,7 @@
   transform: translateY(0);
   font-size: 0.625rem;
   letter-spacing: 0.02em;
-  color: #a1a1aa;
+  color: var(--c-text-5);
 }
 
 .field__trailing {
@@ -181,7 +181,7 @@
 }
 
 .field__reveal:hover {
-  color: #52525b;
+  color: var(--c-text-3);
 }
 
 /* Botón principal ---------------------------------------------------------- */
@@ -226,14 +226,14 @@
   content: "";
   flex: 1;
   height: 1px;
-  background: #e4e4e7;
+  background: var(--c-border);
 }
 
 .auth__divider span {
   font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0.08em;
-  color: #a1a1aa;
+  color: var(--c-text-5);
 }
 
 /* Enlaces y ayudas --------------------------------------------------------- */
@@ -245,14 +245,14 @@
 }
 
 .auth__link:hover {
-  color: #52525b;
+  color: var(--c-text-3);
 }
 
 .auth__fineprint {
   font-size: 0.6875rem;
   line-height: 1.6;
   text-align: center;
-  color: #a1a1aa;
+  color: var(--c-text-5);
   margin: 0.5rem 0 0;
 }
 
@@ -277,7 +277,7 @@
   align-items: center;
   gap: 0.75rem;
   font-size: 0.75rem;
-  color: #a1a1aa;
+  color: var(--c-text-5);
 }
 
 .auth__footer-links {
