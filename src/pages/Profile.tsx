@@ -30,7 +30,7 @@ function FloatingField({ id, label, type = "text", value, onChange }: FloatingFi
 }
 
 export function Profile() {
-  const { user, updateProfile, verifyPassword } = useUser();
+  const { user, updateProfile } = useUser();
   const [name, setName] = useState(user?.name ?? "");
   const [email, setEmail] = useState(user?.email ?? "");
   const [password, setPassword] = useState("");
@@ -54,13 +54,9 @@ export function Profile() {
     savingRef.current = true;
     setSaving(true);
     try {
-      const verified = await verifyPassword(password);
+      // HU-S01: la contraseña viaja con los cambios y la valida el servidor.
+      const result = await updateProfile(name.trim(), email.trim(), password);
       setPassword("");
-      if (!verified.ok) {
-        setStatus({ type: "error", message: verified.error });
-        return;
-      }
-      const result = await updateProfile(name.trim(), email.trim());
       if (!result.ok) {
         setStatus({ type: "error", message: result.error });
         return;

@@ -5,8 +5,13 @@ import { formatDate } from "../lib/campaignUtils";
 import "./Campaigns.css";
 
 export function Notifications() {
-  const { user, notifications, markNotificationsRead } = useUser();
+  const { user, notifications, markNotificationsRead, refreshNotifications } = useUser();
   const inbox = notifications.filter((n) => n.recipientEmail === user?.email);
+
+  // HU-15: al abrir la bandeja se consultan las notificaciones más recientes del servidor.
+  useEffect(() => {
+    void refreshNotifications();
+  }, [refreshNotifications]);
 
   useEffect(() => {
     // Mark as read once the inbox has been viewed.

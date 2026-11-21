@@ -13,12 +13,6 @@ export const authApi = {
     return toUser(res.data);
   },
 
-  // Reuse the existing login endpoint without replacing the active token/session.
-  verifyPassword: async (email: string, password: string) => {
-    const res = await api.post('/auth/login', { email, password });
-    return toUser(res.data);
-  },
-
   logout: () => {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(SESSION_KEY);
