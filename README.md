@@ -271,19 +271,6 @@ Con npm usar `npm run <script>`.
 
 ---
 
-## Próximos Pasos / Roadmap
-
-- [ ] Implementar y asegurar el endpoint de PIN en el backend.
-- [ ] Validar la compilación (npx tsc --noEmit y npm run build).
-- [ ] Ejecutar pruebas de integración de autenticación, campañas, aportes, billetera y administración.
-- [ ] Verificar notificaciones y envío real de correo.
-- [ ] Retiro de fondos (creadores)
-- [ ] Tests unitarios y end-to-end
-- [ ] CI/CD con GitHub Actions
-- [ ] Despliegue del frontend
-
----
-
 ## Licencia
 
 MIT — Uso académico CodeFactory UdeA.
