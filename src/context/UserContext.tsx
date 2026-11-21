@@ -164,6 +164,7 @@ interface UserContextType {
   login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
   logout: () => void;
+  verifyPassword: (password: string) => Promise<ActionResult>;
   updateProfile: (name: string, email: string) => Promise<ActionResult>;
   recharge: (amount: number) => Promise<void>;
   refreshBalance: () => Promise<void>;
@@ -653,6 +654,28 @@ export function UserProvider({ children }: { children: ReactNode }) {
     return normalized !== normalizeEmail(ownEmail) && accounts.some((a) => a.email === normalized);
   };
 
+  // Confirmation in the client; server-side authorization remains unchanged.
+  const verifyPassword = async (password: string): Promise<ActionResult> => {
+    if (!session) return { ok: false, error: "Debes iniciar sesión." };
+    if (!password) return { ok: false, error: "Ingresa tu contraseña actual." };
+    const invalid = { ok: false as const, error: "No se pudo confirmar tu contraseña." };
+    try {
+      if (session.demo) {
+        const account = accounts.find((a) => a.email === normalizeEmail(session.email));
+        const valid = findAccount(session.email)
+          ? checkPassword(session.email, password)
+          : account?.password !== undefined && account.password === password;
+        if (!valid || account?.status === "inactive") return invalid;
+      } else {
+        const confirmed = await authApi.verifyPassword(session.email, password);
+        if (String(confirmed.id) !== String(session.id)) return invalid;
+      }
+      return { ok: true, data: undefined };
+    } catch (err) {
+      return { ok: false, error: getApiError(err, "No se pudo confirmar tu contraseña.") };
+    }
+  };
+
   const updateProfile = async (name: string, email: string): Promise<ActionResult> => {
     if (!session) return { ok: false, error: "Debes iniciar sesión." };
     if (!name.trim() || !email.trim()) {
@@ -1073,6 +1096,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
         login,
         register,
         logout,
+        verifyPassword,
         updateProfile,
         recharge,
         refreshBalance,

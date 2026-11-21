@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link, useParams } from "react-router";
 import {
   AlertCircle,
@@ -29,14 +29,15 @@ type Feedback = { type: "success" | "error"; message: string; suggestRecharge?: 
 
 export function CampaignDetail() {
   const { id } = useParams();
-  const { user, campaigns, contribute } = useUser();
+  const { user, campaigns, contribute, verifyPassword } = useUser();
   const campaign = campaigns.find((c) => c.id === id);
 
   const [activeImage, setActiveImage] = useState(0);
   const [amount, setAmount] = useState("");
   const [rewardId, setRewardId] = useState<string | null>(null);
-  const [simulateFailure, setSimulateFailure] = useState(false);
+  const [password, setPassword] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
+  const processingRef = useRef(false);
   const [contributionFeedback, setContributionFeedback] = useState<Feedback>(null);
   const [receipt, setReceipt] = useState<ContributionReceipt | null>(null);
 
@@ -67,8 +68,9 @@ export function CampaignDetail() {
     if (selected && Number(value) < selected.minAmount) setRewardId(null);
   };
 
-  const handleContribute = (e: React.FormEvent) => {
+  const handleContribute = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (processingRef.current || !password) return;
     setContributionFeedback(null);
 
     if (!amount || isNaN(parsedAmount) || parsedAmount <= 0) {
@@ -84,11 +86,16 @@ export function CampaignDetail() {
       return;
     }
 
+    processingRef.current = true;
     setIsProcessing(true);
-    // Simulated payment processing delay.
-    setTimeout(async () => {
-      const result = await contribute(campaign.id, parsedAmount, rewardId, { simulateFailure });
-      setIsProcessing(false);
+    try {
+      const verified = await verifyPassword(password);
+      setPassword("");
+      if (!verified.ok) {
+        setContributionFeedback({ type: "error", message: verified.error });
+        return;
+      }
+      const result = await contribute(campaign.id, parsedAmount, rewardId);
       if (!result.ok) {
         setContributionFeedback({
           type: "error",
@@ -100,7 +107,10 @@ export function CampaignDetail() {
       setReceipt(result.data);
       setAmount("");
       setRewardId(null);
-    }, 900);
+    } finally {
+      processingRef.current = false;
+      setIsProcessing(false);
+    }
   };
 
   return (
@@ -312,16 +322,26 @@ export function CampaignDetail() {
                   </div>
                 )}
 
-                <label className="demo-check">
+                <div className="form-field">
+                  <label htmlFor="contribution-password" className="field-label">
+                    Contraseña de la cuenta
+                  </label>
                   <input
-                    type="checkbox"
-                    checked={simulateFailure}
-                    onChange={(e) => setSimulateFailure(e.target.checked)}
+                    id="contribution-password"
+                    type="password"
+                    className="amount-input"
+                    autoComplete="current-password"
+                    disabled={isProcessing}
+                    placeholder="Confirma tu identidad"
+                    value={password}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      setContributionFeedback(null);
+                    }}
                   />
-                  Demo: simular error de procesamiento
-                </label>
+                </div>
 
-                <button type="submit" className="panel__submit" disabled={!amount || isProcessing}>
+                <button type="submit" className="panel__submit" disabled={!amount || !password || isProcessing}>
                   {isProcessing ? (
                     <span className="inline-icon">
                       <Loader2 size={15} className="spin" /> Procesando…
