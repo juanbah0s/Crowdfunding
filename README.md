@@ -9,19 +9,20 @@ Interfaz web de la plataforma de Crowdfunding (CodeFactory UdeA), construida con
 Este repositorio ya incluye:
 
 - Registro de usuarios e inicio de sesión con validación de contraseña (HU-01, HU-02).
-- Edición de perfil (HU-03).
+- Edición de perfil con confirmación de contraseña (HU-03).
 - Recarga de saldo virtual con rango de 10.000 a 1.000.000 (HU-04).
 - Panel principal con saldo, historial de movimientos y estadísticas según el rol (HU-05).
-- Publicación de campañas con imágenes y recompensas (HU-06).
+- Publicación de campañas con imágenes, recompensas y PIN de seis dígitos (HU-06).
 - Edición de campañas activas con bloqueo de meta y fecha límite cuando hay aportes (HU-07).
-- Pausar y cerrar campañas, con notificaciones a los patrocinadores (HU-08).
+- Pausar y cerrar campañas; el cierre requiere contraseña de cuenta y PIN, con notificaciones en la interfaz (HU-08).
 - Exploración, búsqueda, filtro por categoría y ordenamiento de campañas (HU-09).
 - Aportes con selección de recompensa, control de stock y comprobante de contribución (HU-10, HU-11, HU-12).
 - Vista de administrador sobre las campañas de toda la plataforma.
-- Gestión de usuarios para administrador: listado, creación, edición, deshabilitación y eliminación (HU-21), sobre una tabla de usuarios simulada.
+- Gestión de usuarios para administrador mediante API: listado, creación, edición y cambio de estado (HU-21).
+- Confirmación de contraseña para aportes y consulta administrativa de PIN provisional.
 - Rutas protegidas para usuarios autenticados.
 
-> **Integración parcial con el backend.** El registro, el inicio de sesión (JWT), la edición de perfil, la recarga de saldo y la consulta de saldo/historial usan el backend real. Las campañas, los aportes con recompensa, el comprobante, las notificaciones y la gestión de usuarios (HU-21) siguen simulados en el navegador (`localStorage`) hasta conectar los endpoints `/api/campaigns`. Ver [Integración con el Backend](#integración-con-el-backend).
+> **Integración con el backend.** El frontend consume los servicios de autenticación, perfil, billetera, categorías, campañas, aportes y administración. Se conservan componentes de demostración y notificaciones locales. El PIN de campaña permanece provisional en el navegador; su endpoint está previsto, pero no implementado en el servidor. Las pruebas de compilación e integración del PR #9 siguen pendientes de confirmación.
 
 ---
 
@@ -44,8 +45,8 @@ Este repositorio ya incluye:
 
 ```
 src
-├── api/             # Cliente axios (JWT) y módulos del backend: auth, users, mappers
-├── context/         # UserContext: sesión y saldo (backend) + campañas y aportes simulados
+├── api/             # Cliente axios (JWT) y módulos auth, users, campaigns, categories, contributions, admin, campaignPins, mappers
+├── context/         # UserContext: sesión, saldo, campañas, aportes, administración y datos locales
 ├── lib/             # Utilidades (moneda y fechas), validaciones y cuentas de demostración
 ├── pages/           # Vistas: Auth, Explore, CampaignDetail, CampaignForm, Dashboard,
 │                    #         MyCampaigns, Wallet, Profile, Notifications, Users, PanelLayout
@@ -61,7 +62,7 @@ El alias `@` apunta a `src`.
 
 ## Requisitos Previos
 
-- **Node.js** 22 o superior
+- **Node.js** 22 o superior compatible con las versiones instaladas de Vite y React Router (se recomienda una versión LTS actualizada).
 - **pnpm** (o npm)
 - **Backend en ejecución** (por defecto en `http://localhost:8081`): necesario para registrarse y usar cuentas reales. Las [cuentas de demostración](#cuentas-de-demostración) funcionan sin backend. Ver el README del repositorio del backend.
 
@@ -73,11 +74,13 @@ Opcionalmente, crear un archivo `.env` en la raíz para cambiar la URL del backe
 
 ```bash
 VITE_API_URL="http://localhost:8081"
+VITE_CAMPAIGN_PIN_API=false
 ```
 
 | Variable | Uso | Valor por defecto |
 |----------|-----|-------------------|
 | `VITE_API_URL` | URL base del backend (sin `/api`) | `http://localhost:8081` |
+| `VITE_CAMPAIGN_PIN_API` | Activa el adaptador remoto de PIN cuando exista el endpoint | `false` |
 | `PORT` | Puerto del servidor de desarrollo | `8443` |
 
 El backend debe permitir CORS para el origen del frontend. No subir archivos `.env` al repositorio.
@@ -117,7 +120,7 @@ Permiten probar la interfaz sin backend. Sus datos (saldo, historial, perfil) se
 | Patrocinador | `user@catalyst.com` | `Demo1234!` |
 | Administrador | `admin@catalyst.com` | `Admin1234!` |
 
-Estos correos están reservados: nunca se consultan en el backend. Los usuarios que un administrador crea desde `/usuarios` también inician sesión de forma local. Para usar datos reales, regístrate en `/auth` (contraseña de 8 a 16 caracteres, con 1 mayúscula, 1 número y 1 carácter especial) o inicia sesión con una cuenta existente en el backend.
+Estos correos están reservados: nunca se consultan en el backend. Las cuentas de demostración mantienen datos locales; las cuentas creadas mediante la API de administración utilizan el backend. Las operaciones de campañas y aportes requieren los servicios correspondientes. Para usar datos reales, regístrate en `/auth` (contraseña de 8 a 16 caracteres, con 1 mayúscula, 1 número y 1 carácter especial) o inicia sesión con una cuenta existente en el backend.
 
 ---
 
@@ -173,33 +176,33 @@ En la interfaz actual cualquier usuario autenticado puede publicar campañas y a
 
 - **Registro:** nombre, correo y contraseña (8-16 caracteres, mínimo 1 mayúscula, 1 número y 1 carácter especial). Mensaje de confirmación y error si el correo ya existe.
 - **Login:** acceso al panel con correo y contraseña; error si la contraseña es incorrecta.
-- **Perfil:** edición de nombre y correo con validación de campos obligatorios.
+- **Perfil:** edición de nombre y correo con validación de campos obligatorios y confirmación de contraseña.
 - **Recarga de saldo:** monto entre 10.000 y 1.000.000; se rechazan montos fuera del rango.
 - **Saldo:** el creador ve los fondos recaudados por campaña; el patrocinador ve el total aportado y el detalle por campaña. Se actualiza tras cada aporte y se puede consultar el historial de movimientos.
 
 ### Campañas (HU-06 a HU-09)
 
-- **Publicar:** título, descripción, categoría, meta, fecha límite (posterior a hoy y máximo 90 días), hasta 4 imágenes y hasta 6 recompensas opcionales con monto mínimo y unidades disponibles.
-- **Editar:** si la campaña ya recibió aportes, meta y fecha límite quedan bloqueadas; las recompensas se muestran en solo lectura y no son editables.
-- **Pausar/cerrar:** una campaña pausada muestra su etiqueta y no admite aportes; al cerrarla se bloquean los aportes de forma permanente y se notifica a los patrocinadores.
+- **Publicar:** título, descripción, categoría, meta, fecha límite posterior a hoy, hasta 4 imágenes y hasta 6 recompensas opcionales con monto mínimo y unidades disponibles; PIN de seis dígitos con confirmación.
+- **Editar:** si la campaña ya recibió aportes, meta y fecha límite quedan bloqueadas; las recompensas se muestran en solo lectura y no son editables. Se requiere el PIN de campaña.
+- **Pausar/cerrar:** una campaña pausada muestra su etiqueta y no admite aportes; al cerrarla se bloquean los aportes de forma permanente y se generan notificaciones locales. El cierre requiere contraseña de cuenta y PIN.
 - **Explorar:** búsqueda por nombre, filtro por categoría y orden por popularidad, fecha límite o mayor recaudo; mensaje cuando no hay resultados.
 
 ### Aportes (HU-10 a HU-12)
 
-- **Aporte:** monto mayor a cero y no superior al saldo; si el saldo es insuficiente se sugiere recargar.
+- **Aporte:** monto mayor a cero y no superior al saldo; si el saldo es insuficiente se sugiere recargar. Se confirma la contraseña antes de enviar el aporte.
 - **Recompensas:** solo seleccionables si el monto alcanza el mínimo; las agotadas se muestran deshabilitadas y se descuenta una unidad de stock al confirmar.
 - **Comprobante:** resumen de la transacción con campaña, monto, recompensa y saldo restante.
-- **Prueba del caso de error (HU-12):** la pantalla de aporte incluye la casilla "Demo: simular error de procesamiento"; al marcarla, el aporte falla, se muestra el error y no se descuenta saldo.
+- **Errores:** se informa el fallo de la operación; la casilla de simulación de error se retiró de la interfaz.
 
 ### Administración de usuarios (HU-21)
 
-- **Listado:** nombre, correo, rol (Usuario Normal / Administrador) y estado (Activo / Inactivo), con búsqueda y filtros.
+- **Listado:** nombre, correo, rol (Patrocinador / Creador / Administrador) y estado (Activo / Inactivo), con búsqueda y filtros.
 - **Crear:** nombre, correo, rol y contraseña (8-16 caracteres, 1 mayúscula, 1 número y 1 carácter especial). El usuario creado puede iniciar sesión.
 - **Editar:** nombre, correo y rol; se rechazan campos vacíos y correos que ya pertenecen a otro usuario.
-- **Deshabilitar / eliminar:** si la cuenta tiene recargas, campañas o aportes, se deshabilita y se conserva su historial; si no, se elimina. Una cuenta inactiva no puede iniciar sesión.
+- **Deshabilitar / eliminar:** las cuentas reales se deshabilitan mediante el endpoint de estado; no existe una operación DELETE en el cliente de administración. La eliminación local corresponde a datos de demostración. Una cuenta inactiva no puede iniciar sesión.
 - **Permisos:** solo los administradores acceden al módulo, y un administrador no puede deshabilitar ni eliminar su propia cuenta ni quitarse el rol.
 
-> El backend aún no expone endpoints para administrar usuarios, así que este módulo trabaja sobre una tabla simulada en el navegador. Las cuentas que inician sesión con el backend se agregan a esa tabla al entrar. Los cambios que un administrador haga aquí a cuentas reales no se envían al backend; el propio nombre y correo se cambian desde Perfil.
+> La administración de cuentas reales utiliza `admin.ts`; los roles y estados se conservan según los datos del servidor.
 
 ---
 
@@ -207,27 +210,44 @@ En la interfaz actual cualquier usuario autenticado puede publicar campañas y a
 
 La capa `src/api` consume el backend con axios (`baseURL` = `VITE_API_URL` + `/api`):
 
+Las rutas de la tabla son relativas al prefijo `/api`.
+
 | Módulo | Endpoints | Estado |
 |--------|-----------|--------|
-| `auth.ts` | `POST /auth/register`, `POST /auth/login` | Conectado |
-| `users.ts` | `GET /users/balance`, `PUT /users/profile`, `POST /users/recharge` | Conectado |
-| Campañas | `/api/campaigns`, `/api/categories` | Pendiente (simulado) |
-| Aportes | `/api/campaigns/{id}/contributions[/confirm]` | Pendiente (simulado) |
-| Gestión de usuarios (HU-21) | Sin endpoints en el backend | Simulado |
+| `auth.ts` | POST /auth/register, POST /auth/login | Integrado |
+| `users.ts` | GET /users/balance, PUT /users/profile, POST /users/recharge | Integrado |
+| `categories.ts` | GET /categories, POST /categories | Cliente implementado |
+| `campaigns.ts` | GET /campaigns, GET /campaigns/mine, GET /campaigns/{id}, POST /campaigns, PUT /campaigns/{id}, PATCH /campaigns/{id}/status | Integrado |
+| `contributions.ts` | POST /campaigns/{id}/contributions/confirm | Integrado |
+| `admin.ts` | GET /admin/users, GET /admin/users/{id}, POST /admin/users, PUT /admin/users/{id}, PATCH /admin/users/{id}/status | Cliente implementado |
+| `campaignPins.ts` | POST /campaigns/pin | Contrato futuro; modo local por defecto |
 
 Comportamiento:
 
-- El token se guarda en `localStorage` y se envía como `Authorization: Bearer <token>`.
-- Ante un `401` fuera de login/registro se cierra la sesión y se redirige a `/auth`.
-- Los errores se muestran con el `message` (o el primer `details`) que devuelve el backend.
-- Mientras los aportes sean simulados, su monto se descuenta del saldo real solo en el navegador; al conectar `/contributions/confirm` el saldo vendrá completo del backend.
+- El token se guarda en `localStorage` y se envía como Authorization Bearer.
+- Un 401 fuera de las rutas de autenticación cierra la sesión y redirige a /auth.
+- La confirmación de contraseña reutiliza POST /auth/login sin sustituir el token activo.
+- Los errores del servidor se presentan mediante message o details.
+- Las notificaciones y ciertos datos de demostración permanecen locales; no se garantiza el envío real de correo electrónico.
 
-Pendiente:
+### PIN de campaña (provisional)
 
-- [ ] Conectar campañas (HU-06 a HU-09) a `/api/campaigns`.
-- [ ] Conectar aportes con recompensa y comprobante (HU-10 a HU-12) a `/contributions/confirm`.
-- [ ] Mostrar las campañas del balance (`campaigns` de `/users/balance`) cuando las campañas sean reales.
-- [ ] Conectar la gestión de usuarios (HU-21) a endpoints de administración del backend, cuando existan.
+El adaptador `src/api/campaignPins.ts` valida seis dígitos, comprueba duplicados por propietario en el almacenamiento local y permite registrar, verificar y consultar el PIN. Incluye valores de demostración para campañas de ejemplo. La consulta administrativa se ofrece desde Mis campañas.
+
+Las campañas sin PIN local permiten configurarlo tras confirmar la contraseña de cuenta. Al publicar, el PIN se registra después de recibir el identificador de campaña; si falla el almacenamiento, no se debe repetir la publicación.
+
+**Advertencia:** el PIN se almacena en texto legible en localStorage bajo la clave `catalyst-campaign-pins-v1`. Es manipulable, no se sincroniza entre dispositivos y no constituye autorización del servidor. No usar PIN reales ni confiar en este mecanismo en producción.
+
+Contrato previsto: POST /api/campaigns/pin.
+
+| action | Campos adicionales |
+|--------|-------------------|
+| check-available | pin |
+| set | campaignId, pin |
+| verify | campaignId, pin |
+| reveal | campaignId |
+
+El adaptador espera una respuesta con ok (booleano) y, para reveal, pin opcional. El servidor aún no está implementado. Mantener VITE_CAMPAIGN_PIN_API=false hasta completar su implementación. La autorización de operaciones sensibles, la limitación de intentos y el almacenamiento seguro deben resolverse en el servidor; conviene reconsiderar la consulta de PIN en texto legible y preferir un mecanismo de restablecimiento.
 
 ---
 
@@ -253,7 +273,10 @@ Con npm usar `npm run <script>`.
 
 ## Próximos Pasos / Roadmap
 
-- [ ] Integración completa con el backend (campañas y aportes)
+- [ ] Implementar y asegurar el endpoint de PIN en el backend.
+- [ ] Validar la compilación (npx tsc --noEmit y npm run build).
+- [ ] Ejecutar pruebas de integración de autenticación, campañas, aportes, billetera y administración.
+- [ ] Verificar notificaciones y envío real de correo.
 - [ ] Retiro de fondos (creadores)
 - [ ] Tests unitarios y end-to-end
 - [ ] CI/CD con GitHub Actions
